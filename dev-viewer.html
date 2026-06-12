@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>voxel 模型檢視器（開發工具）</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #2a3450; color: #f2ead8; font-family: system-ui; }
+    #bar { position: fixed; top: 12px; left: 12px; z-index: 2; }
+    select { font-size: 16px; padding: 6px 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div id="bar"><select id="modelSelect"></select></div>
+  <script type="module" src="/src/voxel/dev-viewer.js"></script>
+</body>
+</html>

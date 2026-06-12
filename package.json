@@ -1,0 +1,31 @@
+{
+  "name": "taipei-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "台北小飛官 — 電腦大螢幕 + 雙手機遙控的 voxel 飛行遊戲",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "vite build",
+    "start": "npm run build && node server/index.js",
+    "serve": "node server/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "selfsigned": "^2.4.1",
+    "three": "^0.165.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/three": "^0.184.1",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

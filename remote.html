@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>台北小飛官 — 遙控器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    html, body {
+      height: 100%; overflow: hidden; touch-action: none; overscroll-behavior: none;
+      background: #1a2233; color: #f2ead8;
+      font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
+    }
+    .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; text-align: center; }
+    .hidden { display: none !important; }
+
+    /* —— 開始畫面 —— */
+    #startBtn {
+      font-size: 26px; font-weight: 700; color: #1a2233;
+      background: #f2b94b; border: none; border-radius: 22px;
+      padding: 22px 40px; box-shadow: 0 6px 0 #b8852a;
+      transition: transform .08s, box-shadow .08s;
+    }
+    #startBtn:active { transform: translateY(4px) scale(.98); box-shadow: 0 2px 0 #b8852a; }
+    .hint { font-size: 14px; line-height: 1.65; opacity: .75; }
+    .hold-pic { font-size: 44px; }
+
+    /* —— 校準畫面（橫向：說明左、泡泡中、按鈕右） —— */
+    #calibrate { flex-direction: row; gap: 26px; }
+    #calibrate .col { display: flex; flex-direction: column; gap: 10px; align-items: center; max-width: 34vw; }
+    #calDoneBtn {
+      font-size: 21px; font-weight: 700; color: #1a2233;
+      background: #7fc97f; border: none; border-radius: 18px;
+      padding: 20px 26px; box-shadow: 0 5px 0 #4e8a4e;
+    }
+    #calDoneBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 #4e8a4e; }
+
+    /* —— 操控畫面（橫向三欄：起落架 | 姿態 | 油門） —— */
+    #control {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) auto minmax(96px, 1fr);
+      grid-template-rows: auto 1fr;
+      gap: 10px 16px;
+      padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+               max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    }
+    #slotBanner {
+      grid-column: 1 / -1; border-radius: 14px; padding: 8px 16px;
+      font-size: 17px; font-weight: 700; display: flex; justify-content: space-between; align-items: center;
+      background: #2a3450;
+    }
+    #statusDot { font-size: 13px; font-weight: 500; opacity: .85; }
+
+    /* 左欄：起落架（左拇指） */
+    #leftCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+    #gearBtn {
+      width: 100%; max-width: 170px; min-height: 96px;
+      font-size: 19px; font-weight: 800; color: #1a2233; line-height: 1.35;
+      border: none; border-radius: 20px;
+      background: #7fc97f; box-shadow: 0 5px 0 #4e8a4e;
+      transition: transform .08s, box-shadow .08s, background .2s;
+    }
+    #gearBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 #4e8a4e; }
+    #gearBtn.up { background: #9aa7c0; box-shadow: 0 5px 0 #5e6b85; }
+    #gearBtn.up:active { box-shadow: 0 2px 0 #5e6b85; }
+    #gearHint { font-size: 12px; opacity: .55; }
+
+    /* 中欄：姿態泡泡 + 校正 */
+    #midCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+    #attitude { width: min(34vh, 230px); aspect-ratio: 1; border-radius: 50%; }
+    #calBtn {
+      font-size: 14px; font-weight: 600; color: #f2ead8;
+      background: #3a4666; border: none; border-radius: 12px; padding: 10px 18px;
+      box-shadow: 0 3px 0 #232c47;
+    }
+    #calBtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #232c47; }
+
+    /* 右欄：油門（右拇指） */
+    #thrTrack {
+      position: relative; border-radius: 16px; justify-self: end;
+      background: #2a3450; overflow: hidden; width: 100%; max-width: 110px; height: 100%;
+    }
+    #thrFill { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; background: linear-gradient(180deg, #f2b94b, #e08a3d); }
+    #thrLabel { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: 13px; opacity: .7; z-index: 1; }
+
+    /* 撞擊閃紅（iOS 無震動的 fallback） */
+    #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, #e0533d 100%); }
+    #flash.flash { animation: flashAnim .45s ease-out; }
+    @keyframes flashAnim { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    /* 橫拿 guard（直拿時蓋住） */
+    #rotateGuard { background: #1a2233; z-index: 50; font-size: 19px; line-height: 2; }
+  </style>
+</head>
+<body>
+  <!-- 開始畫面：requestPermission 必須在這顆按鈕的 tap handler 內 -->
+  <div id="start" class="screen">
+    <div class="hold-pic">📱✈️</div>
+    <h1 style="font-size:24px">台北小飛官</h1>
+    <p class="hint">把手機<b>橫拿</b>、像端著遙控器一樣雙手握兩端<br/>面朝上斜斜的（約 45°）<br/>左右傾 = 轉彎，前後傾 = 抬頭低頭</p>
+    <button id="startBtn">🛫 開始操控</button>
+    <p id="startErr" class="hint" style="color:#e08a8a"></p>
+  </div>
+
+  <!-- 首次校準（拿好姿勢 → 設為中立位） -->
+  <div id="calibrate" class="screen hidden">
+    <div class="col">
+      <h2 style="font-size:21px">先校準一下 🎯</h2>
+      <p class="hint">橫拿手機、雙手握兩端<br/>面朝上斜斜的（約 45°）、手放鬆<br/>泡泡會跟著你的手動</p>
+    </div>
+    <canvas id="calCanvas" width="220" height="220" style="border-radius:50%"></canvas>
+    <div class="col">
+      <button id="calDoneBtn">✅ 就是這個姿勢！</button>
+      <p class="hint">之後覺得飄，隨時再按「校正歸零」</p>
+    </div>
+  </div>
+
+  <!-- 操控畫面 -->
+  <div id="control" class="screen hidden">
+    <div id="slotBanner">
+      <span id="slotName">連線中…</span>
+      <span id="statusDot">⏳</span>
+    </div>
+    <div id="leftCol">
+      <button id="gearBtn">🛬 起落架<br/><span id="gearState">已放下</span></button>
+      <div id="gearHint">起飛後按它收輪，飛比較快！</div>
+    </div>
+    <div id="midCol">
+      <canvas id="attitude" width="230" height="230"></canvas>
+      <button id="calBtn">🎯 校正歸零</button>
+    </div>
+    <div id="thrTrack">
+      <div id="thrLabel">油門</div>
+      <div id="thrFill"></div>
+    </div>
+  </div>
+
+  <!-- 滿了 -->
+  <div id="full" class="screen hidden">
+    <div style="font-size:46px">🛬</div>
+    <h2>機庫滿了！</h2>
+    <p class="hint">已經有兩台飛機在天上了<br/>下一班再來吧</p>
+  </div>
+
+  <div id="flash"></div>
+  <div id="rotateGuard" class="screen hidden">📱↻<br/>請把手機轉橫</div>
+  <!-- 遊戲中轉直：不中斷，只提示（傾斜操控不受螢幕旋轉影響） -->
+  <div id="rotateHint">📱↻ 轉回橫向比較好操作</div>
+  <style>
+    #rotateHint {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 40; display: none; background: #2a3450ee; padding: 12px 20px;
+      border-radius: 14px; font-size: 16px; font-weight: 600; pointer-events: none;
+    }
+    #rotateHint.show { display: block; }
+  </style>
+
+  <script type="module" src="/src/remote/main.js"></script>
+</body>
+</html>

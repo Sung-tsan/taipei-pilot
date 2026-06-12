@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>台北小飛官</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; background: #1a2233; color: #f2ead8; font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif; }
+    #gameCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; image-rendering: pixelated; }
+
+    /* —— 連線面板（沒人連線時全版） —— */
+    #joinPanel {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px; z-index: 10;
+      background: #1a2233ee; text-align: center;
+    }
+    #joinPanel h1 { font-size: 40px; letter-spacing: 2px; }
+    #joinPanel .sub { font-size: 17px; opacity: .75; line-height: 1.8; }
+    #qr { border-radius: 16px; }
+    #qrUrl { font-size: 13px; opacity: .5; font-family: ui-monospace, monospace; }
+    #slotChips { display: flex; gap: 14px; }
+    .chip { padding: 10px 22px; border-radius: 999px; background: #2a3450; font-size: 16px; font-weight: 600; opacity: .55; }
+    .chip.active { opacity: 1; }
+    #kbHint { font-size: 13px; opacity: .4; }
+
+    /* 中央分隔線（分屏時） */
+    #splitLine { position: fixed; top: 0; bottom: 0; left: calc(50vw - 1px); width: 2px; background: #1a2233; z-index: 4; display: none; }
+
+    /* 角落小 QR（還有空位時） */
+    #miniQr { position: fixed; right: 18px; bottom: 18px; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px; background: #222b44cc; padding: 12px; border-radius: 14px; }
+    #miniQr.show { display: flex; }
+    #miniQr span { font-size: 12px; opacity: .8; }
+    #miniQr canvas { width: 110px !important; height: 110px !important; border-radius: 8px; }
+
+    /* 斷線等待提示（每 slot） */
+    .lostBadge {
+      position: fixed; top: 18px; padding: 10px 18px; border-radius: 12px;
+      background: #222b44dd; font-size: 16px; z-index: 6; display: none;
+    }
+    #lost0 { left: 18px; } #lost1 { right: 18px; }
+
+    /* —— 每視口 HUD（高度/速度，極簡圖示化） —— */
+    .hud {
+      position: fixed; top: 16px; z-index: 6; display: none; gap: 14px;
+      font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #0008;
+      background: #1a223355; padding: 8px 16px; border-radius: 999px;
+    }
+    .hud.show { display: flex; }
+    #hud0 { left: 50%; transform: translateX(-50%); }
+    #hud0.half { left: 25%; }
+    #hud1 { left: 75%; transform: translateX(-50%); }
+
+    /* 回家箭頭（每視口）：箭頭隨機頭方向旋轉指向松山機場 */
+    .homeBadge {
+      position: fixed; top: 64px; z-index: 6; display: none; align-items: center; gap: 8px;
+      transform: translateX(-50%);
+      font-size: 15px; font-weight: 700; text-shadow: 0 2px 4px #0008;
+      background: #1a223355; padding: 6px 14px; border-radius: 999px;
+    }
+    .homeBadge.show { display: flex; }
+    .homeBadge .arrow { display: inline-block; font-size: 20px; line-height: 1; transition: transform .15s linear; }
+    #home0 { left: 50%; } #home0.half { left: 25%; }
+    #home1 { left: 75%; }
+
+    /* 事件 toast（起飛/降落），每視口一個 */
+    .toast {
+      position: fixed; top: 22%; z-index: 7; transform: translateX(-50%) scale(.8);
+      font-size: 34px; font-weight: 800; text-shadow: 0 3px 8px #0009;
+      opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) scale(1); }
+    #toast0 { left: 50%; } #toast0.half { left: 25%; }
+    #toast1 { left: 75%; }
+
+    /* 聲音提示 */
+    #soundHint { position: fixed; top: 16px; right: 16px; z-index: 6; font-size: 13px; opacity: .55; background: #1a223388; padding: 6px 12px; border-radius: 999px; display: none; }
+
+    /* debug 面板（?debug=1） */
+    #debug { position: fixed; left: 10px; bottom: 10px; z-index: 9; font: 12px ui-monospace, monospace; color: #cfe0a8; background: #1a2233aa; padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="splitLine"></div>
+
+  <div id="joinPanel">
+    <h1>🛫 台北小飛官</h1>
+    <p class="sub">用手機掃 QR code，手機就變成飛機操縱桿！<br/>最多兩台飛機一起飛</p>
+    <canvas id="qr"></canvas>
+    <div id="qrUrl"></div>
+    <div id="slotChips">
+      <div class="chip" id="chip0">🔴 紅機</div>
+      <div class="chip" id="chip1">🔵 藍機</div>
+    </div>
+    <p class="sub" id="serverStatus"></p>
+    <p id="kbHint">（開發用：按方向鍵 + W/S 油門可直接用鍵盤開紅機）</p>
+  </div>
+
+  <div class="lostBadge" id="lost0">🔴 紅機斷線了，盤旋等你回來…</div>
+  <div class="lostBadge" id="lost1">🔵 藍機斷線了，盤旋等你回來…</div>
+
+  <div id="miniQr">
+    <span>再掃一支 = 第二台飛機</span>
+    <canvas id="qrMini"></canvas>
+  </div>
+
+  <div class="hud" id="hud0"></div>
+  <div class="hud" id="hud1"></div>
+  <div class="homeBadge" id="home0"><span class="arrow">⬆️</span><span class="label"></span></div>
+  <div class="homeBadge" id="home1"><span class="arrow">⬆️</span><span class="label"></span></div>
+  <div class="toast" id="toast0"></div>
+  <div class="toast" id="toast1"></div>
+  <div id="soundHint">🔇 點一下畫面開聲音</div>
+
+  <div id="debug"></div>
+  <script type="module" src="/src/display/main.js"></script>
+</body>
+</html>
