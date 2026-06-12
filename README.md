@@ -3,13 +3,15 @@
 電腦大螢幕 + 手機遙控器的 voxel 飛行遊戲：兩個孩子各拿一支手機當操縱桿，
 從松山機場起飛，在半徑 10 公里的點陣台北上空自由飛——找 101、沿基隆河飛、回跑道降落。
 
-玩具櫃（kids_arcade）姊妹作；獨立 web 專案，spec 見
-`../spec/taipei_pilot_GAME_SPEC.md`。
+一個爸爸做給孩子的週末專案。MIT 授權，歡迎拿去玩、改、給你家小孩開。
 
 ## 怎麼玩（爸爸看這段就夠）
 
+需要 [Node.js](https://nodejs.org)（18+）。
+
 ```bash
-cd taipei_pilot
+git clone https://github.com/Sung-tsan/taipei-pilot.git
+cd taipei-pilot
 npm install        # 第一次
 npm start          # build + 起 server（電腦和手機要同一個 Wi-Fi）
 ```
