@@ -23,7 +23,8 @@
       background: #1a2233; color: #f2ead8;
       font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
     }
-    .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; text-align: center; }
+    /* height:100dvh＝可視高（iOS Safari 工具列顯示時也對齊）；避免 inset:0 用到「大 viewport」害內容被工具列蓋掉 */
+    .screen { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; text-align: center; }
     .hidden { display: none !important; }
 
     /* —— 開始畫面 —— */
@@ -50,9 +51,10 @@
     /* —— 操控畫面（橫向三欄：起落架 | 姿態 | 油門） —— */
     #control {
       display: grid;
-      grid-template-columns: minmax(120px, 1fr) auto minmax(96px, 1fr);
-      grid-template-rows: auto 1fr auto; /* banner / 主操控 / 複雜版操控列（簡單版該列空 → 0 高）*/
-      gap: 10px 16px;
+      grid-template-columns: minmax(110px, 1fr) auto minmax(92px, 1fr);
+      /* minmax(0,1fr)＝主操控列可縮到比內容還小（短橫螢幕不裁切，靠下面尺寸縮放吸收）*/
+      grid-template-rows: auto minmax(0, 1fr) auto; /* banner / 主操控 / 複雜版操控列（簡單版該列空 → 0 高）*/
+      gap: 10px 16px; min-height: 0;
       padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
                max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
     }
@@ -64,7 +66,7 @@
     #statusDot { font-size: 13px; font-weight: 500; opacity: .85; }
 
     /* 左欄：起落架（左拇指） */
-    #leftCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+    #leftCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 0; }
     #gearBtn {
       width: 100%; max-width: 170px; min-height: 96px;
       font-size: 19px; font-weight: 800; color: #1a2233; line-height: 1.35;
@@ -78,8 +80,9 @@
     #gearHint { font-size: 12px; opacity: .55; }
 
     /* 中欄：姿態泡泡 + 校正 */
-    #midCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-    #attitude { width: min(34vh, 230px); aspect-ratio: 1; border-radius: 50%; }
+    #midCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 0; }
+    /* 姿態泡泡綁可視高（34vh）→ 螢幕越矮越小，不擠掉下方校正/動作鍵 */
+    #attitude { width: min(34vh, 230px); aspect-ratio: 1; border-radius: 50%; flex-shrink: 0; }
     #calBtn {
       font-size: 14px; font-weight: 600; color: #f2ead8;
       background: #3a4666; border: none; border-radius: 12px; padding: 10px 18px;
@@ -160,6 +163,25 @@
     #rudderTrack { position: relative; width: 140px; height: 30px; background: var(--ui-panel-2); border-radius: var(--r-pill); touch-action: none; }
     #rudderTrack::after { content: ''; position: absolute; left: 50%; top: 5px; bottom: 5px; width: 2px; background: #0005; transform: translateX(-50%); }
     #rudderKnob { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; border-radius: 50%; background: var(--candy-amber); transform: translate(-50%, -50%); box-shadow: 0 2px 0 var(--candy-amber-d); }
+
+    /* —— 短橫螢幕（iPhone 12 等小手機橫拿，可視高 ≤430px）：收緊尺寸，操控面板不裁切 —— */
+    @media (max-height: 430px) {
+      #control { gap: 6px 14px; }
+      #slotBanner { padding: 5px 14px; font-size: 15px; }
+      #midCol { gap: 6px; }
+      #attitude { width: min(30vh, 168px); }
+      #calBtn { padding: 7px 14px; font-size: 13px; }
+      #ctxKeys { margin-top: 0; gap: 8px; }
+      .ctx-key { min-height: 50px; font-size: 15px; padding: 6px 4px; }
+      .ctx-hint { font-size: 10px; }
+      #gearBtn { min-height: clamp(60px, 19vh, 88px); font-size: 17px; }
+      #gearHint { font-size: 11px; }
+      /* 複雜版操控列：短螢幕更緊湊 */
+      #complexBar { padding: 5px 10px; gap: 6px 10px; }
+      .instr b { font-size: 15px; }
+      .flap-seg { width: 32px; height: 32px; font-size: 14px; }
+      #rudderTrack { width: 110px; height: 26px; }
+    }
   </style>
 </head>
 <body>
