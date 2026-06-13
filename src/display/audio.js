@@ -114,6 +114,67 @@ export class GameAudio {
     });
   }
 
+  _on() { return this.ctx && this.enabled; }
+
+  /**
+   * 合成單音（含掃頻包絡） @param {OscillatorType} type @param {number} f0 @param {number} f1
+   * @param {number} dur @param {number} vol @param {number} [delay]
+   */
+  _tone(type, f0, f1, dur, vol, delay = 0) {
+    const ctx = this.ctx; if (!ctx) return;
+    const t0 = ctx.currentTime + delay;
+    const osc = ctx.createOscillator(); osc.type = type;
+    osc.frequency.setValueAtTime(f0, t0);
+    if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(g).connect(ctx.destination); osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+
+  /**
+   * 衰減噪音爆（爆炸/濺水/刮地）。 @param {number} dur @param {number} vol
+   * @param {number} fStart @param {number} fEnd @param {number} [delay]
+   */
+  _noise(dur, vol, fStart, fEnd, delay = 0) {
+    const ctx = this.ctx; if (!ctx) return;
+    const t0 = ctx.currentTime + delay;
+    const src = ctx.createBufferSource();
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+    f.frequency.setValueAtTime(fStart, t0);
+    f.frequency.exponentialRampToValueAtTime(Math.max(60, fEnd), t0 + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(f).connect(g).connect(ctx.destination); src.start(t0); src.stop(t0 + dur);
+  }
+
+  /** 卡通爆炸（真實模式撞毀/被擊落；tone ladder 卡通端＝噗咻、非寫實） */
+  explode() { if (!this._on()) return; this._noise(0.45, 0.5, 1400, 120); this._tone('square', 180, 50, 0.4, 0.25); }
+
+  /** 迫降地形音：水花(水) / 刮地(草園) / 輪胎(馬路)，依 v1.1-2 terrain。 @param {string} terrain */
+  forcedLandingSound(terrain) {
+    if (!this._on()) return;
+    if (terrain === 'water') this._noise(0.5, 0.35, 2600, 400);          // 濺水：高頻噪
+    else if (terrain === 'road') { this._tone('square', 95, 70, 0.35, 0.2); this._noise(0.3, 0.15, 500, 200); } // 輪胎
+    else this._noise(0.5, 0.3, 700, 200);                                // 刮地（草/園）：低頻噪
+  }
+
+  /** 任務達成 success（上揚三音） */
+  missionSuccess() { if (!this._on()) return; [523, 659, 880].forEach((f, i) => this._tone('triangle', f, f, 0.25, 0.22, i * 0.1)); }
+
+  /** ❤️−1（下行嗚） */
+  heartLoss() { if (!this._on()) return; this._tone('sine', 440, 220, 0.3, 0.25); }
+
+  /** 大慶祝煙火（連發噪爆 + 高音點綴） */
+  fireworks() {
+    if (!this._on()) return;
+    for (let k = 0; k < 5; k++) { this._noise(0.3, 0.3, 1800, 200, k * 0.25); this._tone('triangle', 800 + k * 120, 1600, 0.2, 0.15, k * 0.25 + 0.02); }
+  }
+
   /** 落地成功小鈴（上行三音） */
   landingChime() {
     const ctx = this.ctx;

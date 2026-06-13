@@ -71,6 +71,7 @@ const runner = new MissionRunner(MAX_SLOTS, {
   collection,
 });
 let playMode = 'mission'; // v1.1-4 預設任務模式以呈現新 UI；v1.1-5 出正式玩法選單
+let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -103,7 +104,10 @@ function refreshDrivers() {
       Object.assign(states[i], makePlane(spawnPose(i)));
       conseq[i] = makeConsequence(settings.mode, settings.heartsMax); // 新上線＝照當前設定重置後果狀態
       planes[i].setDamaged(false);
-      if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
+      if (playMode === 'mission') {
+        runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
+        if (!missionTaught) { toast(i, '✈️ 跟著任務卡的箭頭飛，找到地標！'); missionTaught = true; }
+      }
       if (driver0 === 'fake') { // 壓測用：直接丟到市區上空盤旋
         states[i].mode = 'flying';
         states[i].pos = { x: 800, y: 280, z: 3000 };
@@ -218,7 +222,7 @@ $('collectionClose').addEventListener('click', () => collectionEl.classList.add(
 
 // —— 台北飛透透大慶祝（一次性 gate；收集簿可重看）——
 const celebrationEl = $('celebration');
-function triggerCelebration() { celebrationEl.classList.remove('hidden'); }
+function triggerCelebration() { celebrationEl.classList.remove('hidden'); audio.fireworks(); }
 $('celebrationClose').addEventListener('click', () => celebrationEl.classList.add('hidden'));
 $('celebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration(); });
 
@@ -280,10 +284,10 @@ function respawnAtRunway(i) {
 function handleMishap(i) {
   const res = registerMishap(conseq[i]);
   switch (res.outcome) {
-    case 'heart_loss': toast(i, `碰！剩 ${conseq[i].hearts} ❤️`); break;
-    case 'reset': toast(i, '沒命了～回機場休息 🛬'); break;
+    case 'heart_loss': toast(i, `碰！剩 ${conseq[i].hearts} ❤️`); audio.heartLoss(); break;
+    case 'reset': toast(i, '沒命了～回機場休息 🛬'); audio.heartLoss(); break;
     case 'smoke': toast(i, '⚠️ 冒煙了！快找地方降落'); planes[i].setDamaged(true); break;
-    case 'destroy': toast(i, '墜毀！回跑道 💥'); break;
+    case 'destroy': toast(i, '墜毀！回跑道 💥'); audio.explode(); break;
     default: toast(i, '碰！小心開 🙈'); break; // 'bounce'（safe）
   }
   if (res.reset) respawnAtRunway(i);
@@ -313,20 +317,21 @@ function handleForcedLanding(i, now) {
     roadOk = roadLandable(ROAD_WIDTH, len, T34C_DIMS);
   }
   const result = judgeForcedLanding({ terrain, speed: s.speed, sinkRate: s.lastSink, bank: s.bank, roadOk });
-  audio.bump();
-  net.sendFx(i, 'bump');
+  net.sendFx(i, 'bump'); // 遙控器 haptic
   if (result === 'destroyed') {
     toast(i, '迫降失敗，墜毀！💥');
+    audio.explode();
     conseq[i] = makeConsequence(settings.mode, settings.heartsMax);
     respawnAtRunway(i);
   } else if (result === 'smoking') {
     toast(i, '迫降勉強成功…冒煙了 😬');
+    audio.forcedLandingSound(terrain);
     conseq[i].damage = 'smoking';
     planes[i].setDamaged(true);
   } else {
     toast(i, terrain === TERRAIN.WATER ? '水上迫降成功！💦'
       : terrain === TERRAIN.ROAD ? '馬路迫降成功！🛬' : '迫降成功！👏');
-    audio.landingChime();
+    audio.forcedLandingSound(terrain);
     planes[i].setDamaged(false);
     onForcedLandingSuccess(i, terrain);
   }
@@ -344,7 +349,7 @@ function onForcedLandingSuccess(i, terrain) {
 function handleRunnerEvent(i, ev) {
   if (!ev) return;
   hud.toast(i, `🎉 ${ev.fact}`); // 達成揭曉 + fact（DRAFT）
-  audio.landingChime();
+  audio.missionSuccess();
   saveCollection(localStorage, collection);
   if (ev.celebrate) triggerCelebration();
 }
