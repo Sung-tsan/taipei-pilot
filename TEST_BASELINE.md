@@ -3,13 +3,15 @@
 > 每個 handoff §0-PRE 要求「baseline 全綠才動工」。本檔記錄**當前綠燈基準**、**已修的坑**、以及
 > **已知非問題（假性紅燈）**——下次 session 照表對照即可，不用重新調查同一件事或重跑驗證。
 
-## 當前 baseline（最後更新 2026-06-13，含 v1.1-0 + v1.1-1 + v1.1-2）
+## 當前 baseline（最後更新 2026-06-13，含 v1.1-0 ~ v1.1-3）
 
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **102 passed**（10 files；+forced-landing、+flight-model landAnywhere） |
+| 單元 | `npm test`（vitest） | **117 passed**（11 files；+missions） |
 | 整合 | `npm run e2e`（playwright） | **10 passed**（connect ×8 + flight ×2） |
+
+> JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
 > JSDoc 眉角（已踩過）：全形 `）` 緊接 `@param` 會讓 tsc 解析不到 tag → 報 implicit any。`）` 與 `@param` 間留一個空格。
 
