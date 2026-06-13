@@ -5,8 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>台北小飛官</title>
   <style>
+    /* —— 設計 token：single source = DESIGN_WEB_UI.md §2（勿在別處硬編色值）—— */
+    :root {
+      --ui-bg: #1a2233; --ui-panel: #2a3450; --ui-panel-2: #3a4666;
+      --ui-ink: #f2ead8; --ui-ink-dim: #f2ead8aa;
+      --candy-amber: #f2b94b; --candy-amber-d: #b8852a;
+      --candy-green: #7fc97f; --candy-green-d: #4e8a4e;
+      --candy-red: #e0533d; --grass: #9dbf7b; --river: #8fc7d6;
+      --teal-101: #4fb6a0; --beige: #efe6cf;
+      --slot-0: #e0533d; --slot-1: #3d7be0;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+      --press-lift: 5px; --press-drop: 3px;
+      --hud-fz: 18px; --hud-fz-lg: 34px; --hud-shadow: 0 2px 4px #0008;
+      --hud-pad: 16px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; background: #1a2233; color: #f2ead8; font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif; }
+    html, body { height: 100%; overflow: hidden; background: var(--ui-bg); color: var(--ui-ink); font-family: 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif; }
     #gameCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; image-rendering: pixelated; }
 
     /* —— 連線面板（沒人連線時全版） —— */
@@ -17,64 +32,70 @@
     }
     #joinPanel h1 { font-size: 40px; letter-spacing: 2px; }
     #joinPanel .sub { font-size: 17px; opacity: .75; line-height: 1.8; }
-    #qr { border-radius: 16px; }
+    #qr { border-radius: var(--r-md); }
     #qrUrl { font-size: 13px; opacity: .5; font-family: ui-monospace, monospace; }
     #slotChips { display: flex; gap: 14px; }
-    .chip { padding: 10px 22px; border-radius: 999px; background: #2a3450; font-size: 16px; font-weight: 600; opacity: .55; }
+    .chip { padding: 10px 22px; border-radius: var(--r-pill); background: var(--ui-panel); font-size: 16px; font-weight: 600; opacity: .55; }
     .chip.active { opacity: 1; }
     #kbHint { font-size: 13px; opacity: .4; }
 
     /* 中央分隔線（分屏時） */
-    #splitLine { position: fixed; top: 0; bottom: 0; left: calc(50vw - 1px); width: 2px; background: #1a2233; z-index: 4; display: none; }
+    #splitLine { position: fixed; top: 0; bottom: 0; left: calc(50vw - 1px); width: 2px; background: var(--ui-bg); z-index: 4; display: none; }
 
     /* 角落小 QR（還有空位時） */
-    #miniQr { position: fixed; right: 18px; bottom: 18px; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px; background: #222b44cc; padding: 12px; border-radius: 14px; }
+    #miniQr { position: fixed; right: 18px; bottom: 18px; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px; background: #222b44cc; padding: 12px; border-radius: var(--r-md); }
     #miniQr.show { display: flex; }
     #miniQr span { font-size: 12px; opacity: .8; }
     #miniQr canvas { width: 110px !important; height: 110px !important; border-radius: 8px; }
 
     /* 斷線等待提示（每 slot） */
     .lostBadge {
-      position: fixed; top: 18px; padding: 10px 18px; border-radius: 12px;
-      background: #222b44dd; font-size: 16px; z-index: 6; display: none;
+      position: fixed; top: 18px; padding: 10px 18px; border-radius: var(--r-md);
+      background: #222b44dd; font-size: 16px; z-index: 7; display: none;
     }
     #lost0 { left: 18px; } #lost1 { right: 18px; }
 
-    /* —— 每視口 HUD（高度/速度，極簡圖示化） —— */
-    .hud {
-      position: fixed; top: 16px; z-index: 6; display: none; gap: 14px;
-      font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #0008;
-      background: #1a223355; padding: 8px 16px; border-radius: 999px;
+    /* ========================================================================
+       HUD 6 槽位框架（UI 層的 B1）—— 每視口一層 hud-layer，內含固定槽位。
+       分屏時 body.split → 左右半屏；槽位在層內絕對定位、後階段填內容不搬家。
+       契約見 DESIGN_WEB_UI.md §5；顯隱由 src/display/ui/hud.js 控制。
+       ======================================================================== */
+    .hud-layer {
+      position: fixed; top: 0; bottom: 0; left: 0; width: 100vw;
+      z-index: 6; pointer-events: none; display: none;
     }
-    .hud.show { display: flex; }
-    #hud0 { left: 50%; transform: translateX(-50%); }
-    #hud0.half { left: 25%; }
-    #hud1 { left: 75%; transform: translateX(-50%); }
+    .hud-layer.show { display: block; }
+    body.split #hud-0 { left: 0;    width: 50vw; }
+    body.split #hud-1 { left: 50vw; width: 50vw; }
 
-    /* 回家箭頭（每視口）：箭頭隨機頭方向旋轉指向松山機場 */
-    .homeBadge {
-      position: fixed; top: 64px; z-index: 6; display: none; align-items: center; gap: 8px;
-      transform: translateX(-50%);
-      font-size: 15px; font-weight: 700; text-shadow: 0 2px 4px #0008;
-      background: #1a223355; padding: 6px 14px; border-radius: 999px;
+    .slot {
+      position: absolute; display: none; align-items: center; gap: 8px;
+      font-size: var(--hud-fz); font-weight: 700; color: var(--ui-ink);
+      text-shadow: var(--hud-shadow);
+      background: #1a223355; padding: 8px 16px; border-radius: var(--r-pill);
+      white-space: nowrap;
     }
-    .homeBadge.show { display: flex; }
-    .homeBadge .arrow { display: inline-block; font-size: 20px; line-height: 1; transition: transform .15s linear; }
-    #home0 { left: 50%; } #home0.half { left: 25%; }
-    #home1 { left: 75%; }
+    .slot.show { display: flex; }
 
-    /* 事件 toast（起飛/降落），每視口一個 */
-    .toast {
-      position: fixed; top: 22%; z-index: 7; transform: translateX(-50%) scale(.8);
-      font-size: 34px; font-weight: 800; text-shadow: 0 3px 8px #0009;
-      opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+    .status-slot { top: var(--hud-pad); left: var(--hud-pad); }
+    .task-slot   { top: var(--hud-pad); left: 50%; transform: translateX(-50%); }
+    .mode-slot   { top: var(--hud-pad); right: var(--hud-pad); }
+    .alt-band    { top: 50%; right: var(--hud-pad); transform: translateY(-50%); }
+    .home-slot   { bottom: calc(var(--hud-pad) + env(safe-area-inset-bottom, 0px)); left: var(--hud-pad); font-size: 15px; }
+    .home-slot .arrow { display: inline-block; font-size: 22px; line-height: 1; transition: transform .15s linear; }
+
+    /* CenterSlot：瞬時 toast overlay（起飛/降落/碰）。持久內容空契約（v1.1-4 填導引/慶祝）。 */
+    .center-slot {
+      top: 22%; left: 50%; transform: translateX(-50%) scale(.8);
+      background: none; padding: 0; text-shadow: 0 3px 8px #0009;
+      font-size: var(--hud-fz-lg); font-weight: 800; white-space: nowrap;
+      opacity: 0; transition: opacity .25s, transform .25s;
     }
-    .toast.show { opacity: 1; transform: translateX(-50%) scale(1); }
-    #toast0 { left: 50%; } #toast0.half { left: 25%; }
-    #toast1 { left: 75%; }
+    .center-slot.show { display: block; }
+    .center-slot.toast-fx { opacity: 1; transform: translateX(-50%) scale(1); }
 
     /* 聲音提示 */
-    #soundHint { position: fixed; top: 16px; right: 16px; z-index: 6; font-size: 13px; opacity: .55; background: #1a223388; padding: 6px 12px; border-radius: 999px; display: none; }
+    #soundHint { position: fixed; top: 16px; right: 16px; z-index: 8; font-size: 13px; opacity: .55; background: #1a223388; padding: 6px 12px; border-radius: var(--r-pill); display: none; }
 
     /* debug 面板（?debug=1） */
     #debug { position: fixed; left: 10px; bottom: 10px; z-index: 9; font: 12px ui-monospace, monospace; color: #cfe0a8; background: #1a2233aa; padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; }
@@ -105,12 +126,24 @@
     <canvas id="qrMini"></canvas>
   </div>
 
-  <div class="hud" id="hud0"></div>
-  <div class="hud" id="hud1"></div>
-  <div class="homeBadge" id="home0"><span class="arrow">⬆️</span><span class="label"></span></div>
-  <div class="homeBadge" id="home1"><span class="arrow">⬆️</span><span class="label"></span></div>
-  <div class="toast" id="toast0"></div>
-  <div class="toast" id="toast1"></div>
+  <!-- HUD 6 槽位：每視口一層（分屏時左右各一套）。內容由 src/display/ui/hud.js 注入。 -->
+  <div class="hud-layer" id="hud-0">
+    <div class="slot status-slot" data-slot="StatusSlot"></div>
+    <div class="slot task-slot"   data-slot="TaskSlot"></div>
+    <div class="slot mode-slot"   data-slot="ModeSlot"></div>
+    <div class="slot center-slot" data-slot="CenterSlot"></div>
+    <div class="slot alt-band"    data-slot="AltBand"></div>
+    <div class="slot home-slot"   data-slot="HomeSlot"><span class="arrow">⬆️</span><span class="home-label"></span></div>
+  </div>
+  <div class="hud-layer" id="hud-1">
+    <div class="slot status-slot" data-slot="StatusSlot"></div>
+    <div class="slot task-slot"   data-slot="TaskSlot"></div>
+    <div class="slot mode-slot"   data-slot="ModeSlot"></div>
+    <div class="slot center-slot" data-slot="CenterSlot"></div>
+    <div class="slot alt-band"    data-slot="AltBand"></div>
+    <div class="slot home-slot"   data-slot="HomeSlot"><span class="arrow">⬆️</span><span class="home-label"></span></div>
+  </div>
+
   <div id="soundHint">🔇 點一下畫面開聲音</div>
 
   <div id="debug"></div>

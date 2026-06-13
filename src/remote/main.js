@@ -4,6 +4,8 @@ import { TiltReader } from './tilt.js';
 import { ThrottleSlider } from './throttle.js';
 import { Feedback } from './feedback.js';
 import { RemoteNet } from './net/client.js';
+import { FREE_FLIGHT_KEYS, mountContextKeys } from './context-keys.js';
+import { ComplexControls } from './complex-controls.js';
 import { INPUT_HZ, SLOT_COLORS, SLOT_NAMES } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
 
@@ -18,6 +20,9 @@ const slotName = $('slotName');
 const statusDot = $('statusDot');
 const attitudeCanvas = /** @type {HTMLCanvasElement} */ ($('attitude'));
 const rotateGuard = $('rotateGuard');
+const schemeScreen = $('scheme');
+/** @type {ComplexControls|null} 複雜版才建（簡單版不掛任何複雜操控） */
+let complex = null;
 
 const tilt = new TiltReader();
 const throttle = new ThrottleSlider($('thrTrack'), $('thrFill'));
@@ -30,6 +35,11 @@ let injected = null;
 if (isTestMode) {
   /** @type {any} */ (window).__injectInput =
     (/** @type {number} */ r, /** @type {number} */ p, /** @type {number} */ th) => { injected = { r, p, th }; };
+  // 複雜版測試注入：直接設 rudder/flaps/trim（拖曳滑桿在 headless 不穩，用 hook）
+  /** @type {any} */ (window).__setComplex =
+    (/** @type {number} */ rudder, /** @type {number} */ flaps, /** @type {number} */ trim) => {
+      if (complex) { complex.rudder = rudder; complex.flaps = flaps; complex.trim = trim; }
+    };
 }
 
 const calScreen = $('calibrate');
@@ -62,12 +72,53 @@ $('startBtn').addEventListener('click', async () => {
   }
   feedback.unlockAudio();
   feedback.keepAwake();
+  startScreen.classList.add('hidden');
+  // scheme：選過就直接進校準；沒選過（真機首次）先讓使用者挑簡單/複雜
+  const preset = resolveScheme();
+  if (preset) proceedToCalibrate(preset);
+  else schemeScreen.classList.remove('hidden');
+});
+
+// —— 操控模式（scheme）：每支手機自選，存 tp_remote_scheme（per device）——
+const SCHEME_KEY = 'tp_remote_scheme';
+/** @returns {'simple'|'complex'|null} 已決定的 scheme（test 模式吃 URL ?scheme=；否則讀 localStorage） */
+function resolveScheme() {
+  if (isTestMode) {
+    return new URLSearchParams(location.search).get('scheme') === 'complex' ? 'complex' : 'simple';
+  }
+  const s = localStorage.getItem(SCHEME_KEY);
+  return s === 'simple' || s === 'complex' ? s : null;
+}
+/** @param {'simple'|'complex'} scheme */
+function chooseScheme(scheme) {
+  try { localStorage.setItem(SCHEME_KEY, scheme); } catch { /* 私密模式存不了就算了 */ }
+  schemeScreen.classList.add('hidden');
+  proceedToCalibrate(scheme);
+}
+$('schemeSimple').addEventListener('click', () => chooseScheme('simple'));
+$('schemeComplex').addEventListener('click', () => chooseScheme('complex'));
+
+/** 套用 scheme（顯示複雜操控列 + 建 ComplexControls）並進入校準 @param {'simple'|'complex'} scheme */
+function proceedToCalibrate(scheme) {
+  applyScheme(scheme);
   net.connect(); // 先佔 slot（校準時就完成連線，不讓孩子等兩次）
   startSendLoop(); // 立刻開始發送（飛機停著沒影響）—— 也是 server 活性偵測的心跳
-  startScreen.classList.add('hidden');
   calScreen.classList.remove('hidden');
   drawCalPreview();
-});
+}
+/** @param {'simple'|'complex'} scheme */
+function applyScheme(scheme) {
+  const isComplex = scheme === 'complex';
+  document.body.classList.toggle('scheme-complex', isComplex);
+  if (isComplex && !complex) {
+    complex = new ComplexControls({
+      rudderTrack: $('rudderTrack'),
+      rudderKnob: $('rudderKnob'),
+      flapsEl: $('flaps'),
+      trimEl: /** @type {HTMLInputElement} */ ($('trim')),
+    });
+  }
+}
 
 // —— 首次校準：泡泡即時預覽（相對預設基準），擺好姿勢按確認 = 設中立位 ——
 function drawCalPreview() {
@@ -103,12 +154,30 @@ gearBtn.addEventListener('click', () => {
   renderGear(!wantGearUp); // 樂觀顯示，pstate 回報後校正
   feedback.unlockAudio();
 });
-net.onPState = (/** @type {boolean} */ gearDown) => renderGear(gearDown);
+net.onPState = (/** @type {import('../../shared/protocol.js').PStateMsg} */ ps) => {
+  renderGear(ps.gear);
+  // 複雜版迷你儀表（簡單版這些元素隱藏，更新無害）
+  if (ps.spd !== undefined) $('iSpd').textContent = String(ps.spd);
+  if (ps.alt !== undefined) $('iAlt').textContent = String(ps.alt);
+  if (ps.hdg !== undefined) $('iHdg').textContent = String(ps.hdg);
+};
 /** @param {boolean} gearDown */
 function renderGear(gearDown) {
   gearBtn.classList.toggle('up', !gearDown);
   gearState.textContent = gearDown ? '已放下' : '已收起';
 }
+
+// —— context 動作鍵 slot（喇叭 momentary→BTN.HORN；降落輔助→收油門＋放輪）——
+const ctxKeys = mountContextKeys($('ctxKeys'), FREE_FLIGHT_KEYS, {
+  onAction: (action) => {
+    if (action === 'landAssist') {
+      throttle.set(0.35);  // 進場油門（仍在 V_GLIDE 之上、不失速），孩子一鍵設定下降
+      wantGearUp = false;  // 確保起落架放下
+      renderGear(true);
+      feedback.unlockAudio();
+    }
+  },
+});
 
 net.onState = () => {
   if (net.slotsFull) {
@@ -136,7 +205,14 @@ let seq = 0;
 function startSendLoop() {
   setInterval(() => {
     const t = injected ?? { ...tilt.read(), th: throttle.value };
-    net.sendInput({ s: seq++, r: t.r, p: t.p, th: t.th, b: wantGearUp ? BTN.GEAR_UP : 0 });
+    const b = (wantGearUp ? BTN.GEAR_UP : 0) | ctxKeys.heldMask();
+    /** @type {{s:number,r:number,p:number,th:number,b:number,rudder?:number,flaps?:number,trim?:number}} */
+    const msg = { s: seq++, r: t.r, p: t.p, th: t.th, b };
+    if (complex) { // 複雜版多送 rudder/flaps/trim（簡單版只送基本欄位＝向後相容）
+      const c = complex.values();
+      msg.rudder = c.rudder; msg.flaps = c.flaps; msg.trim = c.trim;
+    }
+    net.sendInput(msg);
   }, Math.round(1000 / INPUT_HZ));
 }
 

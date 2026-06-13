@@ -3,6 +3,7 @@
 // 座標：1 unit = 1m。X=東、Z=南、Y=高。heading 0 = 北（-Z）、順時針增加。
 // 街機保護：速度區間鎖定（不失速）、放手回平、低空柔性拉起、邊界柔性轉回。
 import { clamp, lerp, approach, approachAngle, wrapAngle, angDiff } from '../../lib/math.js';
+import { MAX_FLAPS } from '../../../shared/constants.js';
 
 /** 手感調參總表 —— 改手感只動這張表 */
 export const P = {
@@ -33,11 +34,18 @@ export const P = {
   ORBIT_TH: 0.3,
   CLIMB_ASSIST_AGL: 30, // m 低於此高度且油門夠 → 自動帶爬升（孩子推滿油門就會上天）
   CLIMB_ASSIST_PITCH: 0.16,
+  // —— 複雜版操控（v1.1-0 P4，純加法，neutral=0 時與 v1 完全一致）——
+  RUDDER_YAW: 0.5,      // rad/s 滿方向舵的直接 yaw（接 V3 側風 crab；rudder=0 不影響）
+  TRIM_AUTH: 0.5,       // 配平相對升降舵的權威（滿 trim = 半個升降舵；trim=0 不影響）
+  FLAPS_GLIDE: 2,       // m/s 每段襟翼降低可飛下限（更慢仍不失速，利進場）
+  FLAPS_DRAG: 6,        // m/s 每段襟翼降低極速（阻力）
 };
 
 /**
  * @typedef {{ x:number, y:number, z:number }} Vec3
- * @typedef {{ r:number, p:number, th:number, gearUp?:boolean }} Input
+ * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
+ *             rudder?:number, flaps?:number, trim?:number }} Input
+ *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
  * @typedef {'parked'|'rolling'|'flying'} PlaneMode
  * @typedef {{
  *   pos: Vec3, heading: number, pitch: number, bank: number,
@@ -139,18 +147,22 @@ function stepRolling(s, input, dt, env) {
  */
 function stepFlying(s, input, dt, env) {
   // 1. 速度：區間鎖定，永不失速；放起落架 = 阻力大，極速較低。
-  // 收油門 → 一路減速到 V_GLIDE（不再卡在巡航下限），但永遠不會更慢 → 不失速。
-  const vMax = s.gearDown ? P.V_MAX_GEAR : P.V_MAX;
-  const vTarget = lerp(P.V_GLIDE, vMax, clamp(input.th, 0, 1));
+  // 收油門 → 一路減速到 vGlide（不再卡在巡航下限），但永遠不會更慢 → 不失速。
+  // 襟翼（複雜版）：每段降低可飛下限 + 降低極速（升力/阻力）；flaps=0 → 與 v1 完全一致。
+  const flaps = clamp(input.flaps ?? 0, 0, MAX_FLAPS);
+  const vGlide = P.V_GLIDE - flaps * P.FLAPS_GLIDE;
+  const vMax = (s.gearDown ? P.V_MAX_GEAR : P.V_MAX) - flaps * P.FLAPS_DRAG;
+  const vTarget = lerp(vGlide, vMax, clamp(input.th, 0, 1));
   s.speed = approach(s.speed, vTarget, P.ACCEL, dt);
-  s.speed = clamp(s.speed, P.V_GLIDE, P.V_MAX);
+  s.speed = clamp(s.speed, vGlide, P.V_MAX);
 
   // 2. 滾轉：死區內 = 放手自動回平
   let bankTarget = clamp(input.r, -1, 1) * P.MAX_BANK;
   if (s.autopilot === 'orbit') bankTarget = P.ORBIT_BANK;
 
-  // 3. 俯仰目標
-  let pitchTarget = clamp(input.p, -1, 1) * P.MAX_PITCH;
+  // 3. 俯仰目標（複雜版配平：trim 疊進升降舵當持續偏置；trim=0 → 與 v1 完全一致）
+  const pIn = clamp(clamp(input.p, -1, 1) + (input.trim ?? 0) * P.TRIM_AUTH, -1, 1);
+  let pitchTarget = pIn * P.MAX_PITCH;
 
   // 收油門 → 自然下滑（能量耦合的街機版）：油門低於 IDLE_TH 時，
   // 「放手回平」的目標俯仰漸變為輕微下垂 → 飛機像滑翔一樣慢慢降。
@@ -196,6 +208,10 @@ function stepFlying(s, input, dt, env) {
   // 4. 自動協調轉彎
   const headingRate = Math.tan(s.bank) * P.TURN_G / Math.max(s.speed, 30);
   s.heading = wrapAngle(s.heading + headingRate * dt);
+
+  // 方向舵（複雜版）：直接 yaw，疊在協調轉彎上（接 V3 側風 crab）。rudder=0 → 不影響。
+  const rudder = clamp(input.rudder ?? 0, -1, 1);
+  if (rudder) s.heading = wrapAngle(s.heading + rudder * P.RUDDER_YAW * dt);
 
   // 5. 位移
   const prevY = s.pos.y;

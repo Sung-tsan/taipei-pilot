@@ -20,6 +20,9 @@ export const INPUT_STALE_MS = 500;
 
 export const MAX_SLOTS = 2;
 
+/** 襟翼段數（複雜版控制 + flight-model 共用，單一來源） */
+export const MAX_FLAPS = 2;
+
 /** slot 視覺識別（機身色 / 遙控器主題色） */
 export const SLOT_COLORS = ['#e0533d', '#3d7be0'];
 export const SLOT_NAMES = ['紅機', '藍機'];

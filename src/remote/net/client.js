@@ -24,7 +24,7 @@ export class RemoteNet {
     /** @type {ReturnType<typeof setInterval>|null} */ this._heartbeat = null;
     /** @type {(state:this)=>void} */ this.onState = () => {};
     /** @type {(kind:string)=>void} */ this.onFx = () => {};
-    /** @type {(gear:boolean, mode:string)=>void} */ this.onPState = () => {};
+    /** @type {(ps: import('../../../shared/protocol.js').PStateMsg)=>void} */ this.onPState = () => {};
   }
 
   connect() {
@@ -64,7 +64,7 @@ export class RemoteNet {
           this.onFx(msg.kind);
           return; // fx 不觸發 state render
         case 'pstate':
-          this.onPState(msg.gear, msg.mode);
+          this.onPState(msg);
           return;
         default:
           return;
@@ -102,7 +102,8 @@ export class RemoteNet {
   }
 
   /**
-   * @param {{ s:number, r:number, p:number, th:number, b:number }} input
+   * @param {{ s:number, r:number, p:number, th:number, b:number,
+   *           rudder?:number, flaps?:number, trim?:number }} input 複雜版多送 rudder/flaps/trim
    */
   sendInput(input) {
     if (this.ws?.readyState === WebSocket.OPEN && this.connected) {

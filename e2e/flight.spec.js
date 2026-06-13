@@ -11,9 +11,10 @@ test('鍵盤滿油門 → 滾行 → 自動離地 → 空中', async ({ browser 
   await display.goto('/');
   await display.keyboard.down('Space');
 
-  // joinPanel 讓位給遊戲畫面
+  // joinPanel 讓位給遊戲畫面；HUD 層亮、ModeSlot 出現（parked 時顯示起飛提示）
   await expect(display.locator('#joinPanel')).toBeHidden();
-  await expect(display.locator('#hud0')).toBeVisible();
+  await expect(display.locator('#hud-0')).toBeVisible();
+  await expect(display.locator('#hud-0 .mode-slot')).toBeVisible();
 
   // 60 秒內必定離地（實際 ~8s；headless 軟渲染給寬裕）
   await expect.poll(
@@ -22,8 +23,8 @@ test('鍵盤滿油門 → 滾行 → 自動離地 → 空中', async ({ browser 
   ).toBe('flying');
   await display.keyboard.up('Space');
 
-  // HUD 顯示高度/速度
-  await expect(display.locator('#hud0')).toContainText('⛰');
+  // 飛行中 AltBand 顯示高度/速度
+  await expect(display.locator('#hud-0 .alt-band')).toContainText('⛰');
   await ctx.close();
 });
 

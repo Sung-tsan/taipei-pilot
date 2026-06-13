@@ -229,3 +229,56 @@ describe('轉彎', () => {
     expect(s.heading).toBeGreaterThan(0.3);
   });
 });
+
+describe('複雜版操控（rudder / flaps / trim，v1.1-0 P4 加法接線）', () => {
+  /** 帶擴充欄位的飛行步進 @param {any} s @param {any} input @param {number} seconds */
+  function flyEx(s, input, seconds) {
+    for (let t = 0; t < seconds; t += DT) stepPlane(s, input, DT, env);
+  }
+
+  it('中立安全：不帶 rudder/flaps/trim 與帶全 0 → 狀態位元級一致', () => {
+    const a = airborne({ z: -4000 });
+    const b = airborne({ z: -4000 });
+    for (let t = 0; t < 5; t += DT) {
+      stepPlane(a, { r: 0.3, p: 0.2, th: 0.6 }, DT, env);
+      stepPlane(b, { r: 0.3, p: 0.2, th: 0.6, rudder: 0, flaps: 0, trim: 0 }, DT, env);
+    }
+    expect(b.pos).toEqual(a.pos);
+    expect(b.heading).toBe(a.heading);
+    expect(b.pitch).toBe(a.pitch);
+    expect(b.bank).toBe(a.bank);
+    expect(b.speed).toBe(a.speed);
+  });
+
+  it('方向舵 → 直接 yaw（rudder>0 順時針增、rudder<0 逆時針減）', () => {
+    const straight = airborne({ heading: 0 }); flyEx(straight, { r: 0, p: 0, th: 0.5 }, 2);
+    const right = airborne({ heading: 0 }); flyEx(right, { r: 0, p: 0, th: 0.5, rudder: 1 }, 2);
+    const left = airborne({ heading: 0 }); flyEx(left, { r: 0, p: 0, th: 0.5, rudder: -1 }, 2);
+    expect(Math.abs(straight.heading)).toBeLessThan(0.05);     // 中立直飛 heading 幾乎不動
+    expect(right.heading).toBeGreaterThan(0.3);                // 右舵把機頭偏右
+    expect(left.heading).toBeLessThan(-0.3);                   // 左舵偏左
+  });
+
+  it('配平 → hands-off 持續偏置（trim>0 爬升、trim<0 下降、trim=0 平飛）', () => {
+    const up = airborne({ y: 300 }); flyEx(up, { r: 0, p: 0, th: 0.5, trim: 1 }, 6);
+    const lvl = airborne({ y: 300 }); flyEx(lvl, { r: 0, p: 0, th: 0.5, trim: 0 }, 6);
+    const dn = airborne({ y: 300 }); flyEx(dn, { r: 0, p: 0, th: 0.5, trim: -1 }, 6);
+    expect(up.pos.y).toBeGreaterThan(lvl.pos.y + 20);
+    expect(dn.pos.y).toBeLessThan(lvl.pos.y - 20);
+  });
+
+  it('襟翼 → 降低可飛下限（更慢仍不失速）', () => {
+    const clean = airborne({ speed: 45 }); flyEx(clean, { r: 0, p: 0, th: 0 }, 20);
+    const flapped = airborne({ speed: 45 }); flyEx(flapped, { r: 0, p: 0, th: 0, flaps: 2 }, 20);
+    expect(clean.speed).toBeCloseTo(P.V_GLIDE, 1);
+    expect(flapped.speed).toBeCloseTo(P.V_GLIDE - 2 * P.FLAPS_GLIDE, 1);
+    expect(flapped.speed).toBeLessThan(clean.speed); // 襟翼可飛更慢，利進場
+  });
+
+  it('襟翼 → 阻力大、極速降低', () => {
+    const clean = airborne(); flyEx(clean, { r: 0, p: 0, th: 1, gearUp: true }, 25);
+    const flapped = airborne(); flyEx(flapped, { r: 0, p: 0, th: 1, gearUp: true, flaps: 2 }, 25);
+    expect(clean.speed).toBeCloseTo(P.V_MAX, 1);
+    expect(flapped.speed).toBeCloseTo(P.V_MAX - 2 * P.FLAPS_DRAG, 1);
+  });
+});

@@ -13,12 +13,17 @@
  * @typedef {{ t:'remote_left', slot:number }} RemoteLeft                   // srv→display（進 grace）
  * @typedef {{ t:'remote_back', slot:number }} RemoteBack                   // srv→display（grace 內重連）
  * @typedef {{ t:'remote_gone', slot:number }} RemoteGone                   // srv→display（grace 逾時釋放）
- * @typedef {{ t:'in', s:number, r:number, p:number, th:number, b:number, slot?:number }} InputMsg
+ * @typedef {{ t:'in', s:number, r:number, p:number, th:number, b:number, slot?:number,
+ *             rudder?:number, flaps?:number, trim?:number }} InputMsg
  *   remote→srv（無 slot）→ srv 蓋上 slot → display。
  *   s=序號, r=roll -1..1, p=pitch -1..1（正=拉桿爬升）, th=油門 0..1, b=按鍵 bitmask
+ *   —— 複雜版多送（向後相容，缺值＝中立）——
+ *   rudder=方向舵 -1..1（→yaw）, flaps=襟翼段 0..n（整數）, trim=配平 -1..1（pitch 偏置）
  * @typedef {{ t:'fx', slot:number, kind:'bump' }} FxMsg                    // display→srv→remote
- * @typedef {{ t:'pstate', slot:number, gear:boolean, mode:'parked'|'rolling'|'flying' }} PStateMsg
- *   display→srv→remote：實際機況回報（起落架真實狀態、飛行模式），遙控器 UI 跟著顯示
+ * @typedef {{ t:'pstate', slot:number, gear:boolean, mode:'parked'|'rolling'|'flying',
+ *             spd?:number, alt?:number, hdg?:number }} PStateMsg
+ *   display→srv→remote：實際機況回報（起落架真實狀態、飛行模式），遙控器 UI 跟著顯示。
+ *   —— 複雜版儀表用（向後相容，簡單版忽略）—— spd=空速 km/h, alt=高度 m, hdg=航向 0..359°
  * @typedef {{ t:'display_replaced' }} DisplayReplaced                      // srv→舊 display：被新視窗接管，停止重連
  * @typedef {{ t:'reset' }} ResetMsg                                        // display→srv：清空所有 slot（換場/測試）
  * @typedef {{ t:'ping' }} PingMsg                                          // client→srv：應用層心跳（半開連線偵測）
@@ -75,20 +80,34 @@ export function parseMsg(raw) {
     case 'remote_back':
     case 'remote_gone':
       return inRange(m.slot, 0, 7) ? { t: m.t, slot: m.slot } : null;
-    case 'in':
+    case 'in': {
       if (!num(m.s) || !inRange(m.r, -1, 1) || !inRange(m.p, -1, 1)
         || !inRange(m.th, 0, 1) || !num(m.b)) return null;
-      return {
-        t: 'in', s: m.s, r: m.r, p: m.p, th: m.th, b: m.b,
-        ...(m.slot !== undefined ? { slot: m.slot } : {}),
-      };
+      /** @type {InputMsg} */
+      const out = { t: 'in', s: m.s, r: m.r, p: m.p, th: m.th, b: m.b };
+      if (m.slot !== undefined) out.slot = m.slot;
+      // 複雜版選送欄位：若帶就驗值域，壞值整則丟棄（不靜默忽略）。缺值＝中立，由消費端補 0。
+      if (m.rudder !== undefined) { if (!inRange(m.rudder, -1, 1)) return null; out.rudder = m.rudder; }
+      if (m.flaps !== undefined) {
+        if (!num(m.flaps) || !Number.isInteger(m.flaps) || m.flaps < 0 || m.flaps > 8) return null;
+        out.flaps = m.flaps;
+      }
+      if (m.trim !== undefined) { if (!inRange(m.trim, -1, 1)) return null; out.trim = m.trim; }
+      return out;
+    }
     case 'fx':
       return inRange(m.slot, 0, 7) && m.kind === 'bump'
         ? { t: 'fx', slot: m.slot, kind: m.kind } : null;
-    case 'pstate':
-      return inRange(m.slot, 0, 7) && typeof m.gear === 'boolean'
-        && ['parked', 'rolling', 'flying'].includes(m.mode)
-        ? { t: 'pstate', slot: m.slot, gear: m.gear, mode: m.mode } : null;
+    case 'pstate': {
+      if (!(inRange(m.slot, 0, 7) && typeof m.gear === 'boolean'
+        && ['parked', 'rolling', 'flying'].includes(m.mode))) return null;
+      /** @type {PStateMsg} */
+      const ps = { t: 'pstate', slot: m.slot, gear: m.gear, mode: m.mode };
+      if (m.spd !== undefined) { if (!num(m.spd)) return null; ps.spd = m.spd; }
+      if (m.alt !== undefined) { if (!num(m.alt)) return null; ps.alt = m.alt; }
+      if (m.hdg !== undefined) { if (!num(m.hdg)) return null; ps.hdg = m.hdg; }
+      return ps;
+    }
     default:
       return null;
   }

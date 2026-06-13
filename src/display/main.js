@@ -12,6 +12,7 @@ import { PlaneEntity } from './planes/plane-entity.js';
 import { ChaseCam } from './render/chase-cam.js';
 import { LandmarkLabels } from './render/labels.js';
 import { ViewportRenderer } from './render/viewports.js';
+import { Hud } from './ui/hud.js';
 import { GameAudio } from './audio.js';
 import { MAX_SLOTS } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
@@ -40,6 +41,7 @@ const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
 // —— 連線與鍵盤 ——
 const net = new DisplayNet();
 const kb = new KeyboardInput();
+const hud = new Hud(); // 6 槽位 contextual HUD（每視口一層）
 renderQr(/** @type {HTMLCanvasElement} */ ($('qr')), $('qrUrl'));
 renderQr(/** @type {HTMLCanvasElement} */ ($('qrMini')), document.createElement('span'));
 
@@ -70,6 +72,8 @@ function refreshDrivers() {
     }
     if (!driven && wasDriven[i]) planes[i].setVisible(false);
     wasDriven[i] = driven;
+    hud.setActive(i, driven);
+    if (driven) hud.applyMode(i, 'free'); // v1.1-0 唯一模式；v1.1-4 起切 mission
     // 斷線盤旋（只在空中）；回來就交還操控
     const driver = slotDriver(i);
     const orbiting = (driver === 'lost' || driver === 'fake') && states[i].mode === 'flying';
@@ -109,10 +113,7 @@ $('soundHint').style.display = 'block';
 
 /** @param {number} slot @param {string} text */
 function toast(slot, text) {
-  const el = $(`toast${slot}`);
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2200);
+  hud.toast(slot, text); // CenterSlot 瞬時 overlay
 }
 
 // —— 遊戲迴圈：固定步長 60Hz 模擬 + rAF 渲染 ——
@@ -120,6 +121,7 @@ const DT = 1 / 60;
 let last = performance.now();
 let acc = 0;
 const fxCooldown = [0, 0];
+const hornWas = [false, false]; // 喇叭上升緣偵測（context 鍵 BTN.HORN）
 const debugEl = $('debug');
 const debugOn = new URLSearchParams(location.search).has('debug');
 if (debugOn) debugEl.style.display = 'block';
@@ -131,21 +133,29 @@ function inputFor(slot) {
   if (driver === 'keyboard') return kb.read(DT);
   if (driver === 'active') {
     const live = net.liveInput(slot);
-    if (live) return { r: live.r, p: live.p, th: live.th, gearUp: !!(live.b & BTN.GEAR_UP) };
+    if (live) return {
+      r: live.r, p: live.p, th: live.th, gearUp: !!(live.b & BTN.GEAR_UP),
+      rudder: live.rudder ?? 0, flaps: live.flaps ?? 0, trim: live.trim ?? 0, // 複雜版（缺＝中立）
+    };
   }
   const lastInput = lastInputs[slot];
   return { r: 0, p: 0, th: lastInput.th, gearUp: lastInput.gearUp }; // lost：交給 autopilot
 }
 
-/** 機況變化才回報給遙控器（起落架狀態/模式） */
-const lastPState = states.map(() => ({ gear: true, mode: 'parked' }));
-function reportPState() {
+/** 機況回報給遙控器：gear/mode 變化即時；儀表（spd/alt/hdg）以 ~6Hz 刷新（複雜版用，簡單版忽略） */
+const lastPState = states.map(() => ({ gear: true, mode: 'parked', at: 0 }));
+/** @param {number} now */
+function reportPState(now) {
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (net.slotStatus[i] !== 'active') continue;
     const s = states[i];
-    if (s.gearDown !== lastPState[i].gear || s.mode !== lastPState[i].mode) {
-      lastPState[i] = { gear: s.gearDown, mode: s.mode };
-      net.sendPState(i, s.gearDown, s.mode);
+    const changed = s.gearDown !== lastPState[i].gear || s.mode !== lastPState[i].mode;
+    if (changed || now - lastPState[i].at > 160) {
+      lastPState[i] = { gear: s.gearDown, mode: s.mode, at: now };
+      const spd = Math.round(s.speed * 3.6); // km/h（與 HUD 一致）
+      const alt = Math.round(s.pos.y);        // m
+      const hdg = Math.round((((s.heading * 180) / Math.PI) % 360 + 360) % 360); // 0..359
+      net.sendPState(i, s.gearDown, s.mode, spd, alt, hdg);
     }
   }
 }
@@ -180,7 +190,16 @@ function loop(/** @type {number} */ now) {
     }
     acc -= DT;
   }
-  reportPState();
+  reportPState(now);
+
+  // 喇叭（context 鍵 BTN.HORN）：上升緣觸發一次卡通叭叭
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (!wasDriven[i]) { hornWas[i] = false; continue; }
+    const live = net.liveInput(i);
+    const honking = !!(live && (live.b & BTN.HORN));
+    if (honking && !hornWas[i]) audio.horn();
+    hornWas[i] = honking;
+  }
 
   // 視覺同步 + 相機 + 渲染
   const views = [];
@@ -193,35 +212,27 @@ function loop(/** @type {number} */ now) {
   labels.update(states.filter((_, i) => wasDriven[i]).map((s) => s.pos));
   const split = views.length === 2;
   $('splitLine').style.display = split ? 'block' : 'none';
+  hud.layout(views.length); // 1 人滿版 / 2 人左右半屏
 
-  // HUD（高度/速度，整數就好——這是給孩子看的）
+  // HUD 槽位內容（整數就好——這是給孩子看的）
   for (let i = 0; i < MAX_SLOTS; i++) {
-    const hud = $(`hud${i}`);
-    hud.classList.toggle('show', wasDriven[i]);
-    if (wasDriven[i]) {
-      const s = states[i];
-      hud.textContent = s.mode === 'flying'
-        ? `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`
-        : '🛫 推滿油門起飛！';
-    }
-  }
-  $('hud0').classList.toggle('half', split);
-  $('toast0').classList.toggle('half', split);
-  $('home0').classList.toggle('half', split);
-
-  // 回家箭頭：飛離機場 >900m 才出現；箭頭 = 機場方位相對機頭的夾角
-  for (let i = 0; i < MAX_SLOTS; i++) {
-    const badge = $(`home${i}`);
+    if (!wasDriven[i]) continue;
     const s = states[i];
+    if (s.mode === 'flying') {
+      hud.setMode(i, '🛩 T-34C');
+      hud.setAlt(i, `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`);
+    } else {
+      hud.setMode(i, '🛫 推滿油門起飛！');
+      hud.setAlt(i, ''); // 地面上隱藏高度帶
+    }
+    // 回家箭頭：飛離機場 >900m 才出現；箭頭 = 機場方位相對機頭的夾角
     const dist = Math.hypot(s.pos.x, s.pos.z);
-    const show = wasDriven[i] && s.mode === 'flying' && dist > 900;
-    badge.classList.toggle('show', show);
-    if (show) {
+    if (s.mode === 'flying' && dist > 900) {
       const bearingHome = Math.atan2(-s.pos.x, s.pos.z); // 朝原點（松機）的 heading
       const rel = wrapAngle(bearingHome - s.heading);     // 0 = 正前方
-      /** @type {HTMLElement} */ (badge.querySelector('.arrow')).style.transform = `rotate(${rel}rad)`;
-      /** @type {HTMLElement} */ (badge.querySelector('.label')).textContent =
-        `松山機場 ${(dist / 1000).toFixed(1)}km`;
+      hud.setHome(i, rel, `松山機場 ${(dist / 1000).toFixed(1)}km`);
+    } else {
+      hud.setHome(i, 0, null);
     }
   }
 

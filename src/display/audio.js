@@ -94,6 +94,26 @@ export class GameAudio {
     osc.stop(ctx.currentTime + 0.35);
   }
 
+  /** 喇叭：卡通「叭—叭」兩短聲（context 鍵 BTN.HORN）。tone ladder 卡通端＝可愛、不擬真。 */
+  horn() {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled) return;
+    [0, 0.17].forEach((dt) => {
+      const t0 = ctx.currentTime + dt;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, t0);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.26, t0 + 0.02);
+      gain.gain.setValueAtTime(0.26, t0 + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.18);
+    });
+  }
+
   /** 落地成功小鈴（上行三音） */
   landingChime() {
     const ctx = this.ctx;

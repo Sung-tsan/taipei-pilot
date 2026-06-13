@@ -6,6 +6,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>台北小飛官 — 遙控器</title>
   <style>
+    /* —— 設計 token：single source = DESIGN_WEB_UI.md §2（與 display 一致）—— */
+    :root {
+      --ui-bg: #1a2233; --ui-panel: #2a3450; --ui-panel-2: #3a4666;
+      --ui-ink: #f2ead8; --ui-ink-dim: #f2ead8aa;
+      --candy-amber: #f2b94b; --candy-amber-d: #b8852a;
+      --candy-green: #7fc97f; --candy-green-d: #4e8a4e;
+      --candy-red: #e0533d; --slot-0: #e0533d; --slot-1: #3d7be0;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+      --press-lift: 5px; --press-drop: 3px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     html, body {
       height: 100%; overflow: hidden; touch-action: none; overscroll-behavior: none;
@@ -40,7 +51,7 @@
     #control {
       display: grid;
       grid-template-columns: minmax(120px, 1fr) auto minmax(96px, 1fr);
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto 1fr auto; /* banner / 主操控 / 複雜版操控列（簡單版該列空 → 0 高）*/
       gap: 10px 16px;
       padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
                max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
@@ -91,6 +102,64 @@
 
     /* 橫拿 guard（直拿時蓋住） */
     #rotateGuard { background: #1a2233; z-index: 50; font-size: 19px; line-height: 2; }
+
+    /* —— Tactile 按壓（DESIGN_WEB_UI.md §3）：新元件用，不動既有按鈕手感 —— */
+    .tactile {
+      border: none; cursor: pointer;
+      box-shadow: 0 var(--press-lift) 0 var(--press-shadow, #0006);
+      transition: transform .08s ease, box-shadow .08s ease, background .2s, filter .12s;
+    }
+    .tactile:active {
+      transform: translateY(var(--press-drop));
+      box-shadow: 0 calc(var(--press-lift) - var(--press-drop)) 0 var(--press-shadow, #0006);
+    }
+
+    /* —— context 動作鍵 slot（2 顆可替換大鍵，預設 喇叭/降落輔助）—— */
+    #ctxKeys { display: flex; gap: 12px; width: 100%; justify-content: center; margin-top: 4px; }
+    .ctx-key {
+      flex: 1 1 0; min-height: 64px; max-width: 150px;
+      font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--ui-bg);
+      border-radius: var(--r-md); padding: 8px 6px;
+      background: var(--candy-amber); --press-shadow: var(--candy-amber-d);
+    }
+    .ctx-key:nth-child(2) { background: var(--candy-green); --press-shadow: var(--candy-green-d); }
+    .ctx-key.held { filter: brightness(.88); }
+    .ctx-hint { font-size: 11px; font-weight: 600; opacity: .8; }
+
+    /* —— scheme 選擇（簡單/複雜，每支手機自選）—— */
+    #scheme .scheme-cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+    .scheme-card {
+      font-size: 22px; font-weight: 800; color: var(--ui-bg); line-height: 1.4;
+      background: var(--candy-amber); --press-shadow: var(--candy-amber-d);
+      border-radius: var(--r-lg); padding: 24px 22px; min-width: 150px;
+    }
+    #schemeComplex { background: var(--candy-green); --press-shadow: var(--candy-green-d); }
+    .scheme-sub { font-size: 13px; font-weight: 600; opacity: .85; }
+
+    /* —— 複雜版操控列（方向舵/襟翼/配平/儀表）：簡單版隱藏（該 grid 列塌成 0）—— */
+    .complex-only { display: none; }
+    body.scheme-complex .complex-only { display: flex; }
+    #complexBar {
+      grid-column: 1 / -1; align-items: center; justify-content: space-between;
+      gap: 10px 14px; flex-wrap: wrap;
+      background: var(--ui-panel); border-radius: var(--r-md); padding: 8px 12px;
+    }
+    #instruments { display: flex; gap: 16px; }
+    .instr { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+    .instr b { font-size: 18px; font-weight: 800; }
+    .instr small { font-size: 10px; opacity: .6; }
+    #flaps, #trimBox, #rudderBox { display: flex; align-items: center; gap: 8px; }
+    .ctl-label { font-size: 12px; opacity: .8; white-space: nowrap; }
+    .flap-seg {
+      width: 38px; height: 38px; border-radius: var(--r-sm);
+      font-size: 16px; font-weight: 800; color: var(--ui-ink);
+      background: var(--ui-panel-2); --press-shadow: #232c47;
+    }
+    .flap-seg.active { background: var(--candy-amber); color: var(--ui-bg); --press-shadow: var(--candy-amber-d); }
+    #trim { width: 96px; accent-color: var(--candy-amber); }
+    #rudderTrack { position: relative; width: 140px; height: 30px; background: var(--ui-panel-2); border-radius: var(--r-pill); touch-action: none; }
+    #rudderTrack::after { content: ''; position: absolute; left: 50%; top: 5px; bottom: 5px; width: 2px; background: #0005; transform: translateX(-50%); }
+    #rudderKnob { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; border-radius: 50%; background: var(--candy-amber); transform: translate(-50%, -50%); box-shadow: 0 2px 0 var(--candy-amber-d); }
   </style>
 </head>
 <body>
@@ -101,6 +170,15 @@
     <p class="hint">把手機<b>橫拿</b>、像端著遙控器一樣雙手握兩端<br/>面朝上斜斜的（約 45°）<br/>左右傾 = 轉彎，前後傾 = 抬頭低頭</p>
     <button id="startBtn">🛫 開始操控</button>
     <p id="startErr" class="hint" style="color:#e08a8a"></p>
+  </div>
+
+  <!-- 操控模式選擇（每支手機自選；選過存 tp_remote_scheme，下次直接跳過）-->
+  <div id="scheme" class="screen hidden">
+    <h2 style="font-size:22px">選操控模式 🎮</h2>
+    <div class="scheme-cards">
+      <button id="schemeSimple" class="tactile scheme-card">🧒 簡單<br/><span class="scheme-sub">油門＋傾斜＋起落架<br/>給小小孩</span></button>
+      <button id="schemeComplex" class="tactile scheme-card">🧑‍✈️ 複雜<br/><span class="scheme-sub">＋方向舵／襟翼／配平／儀表<br/>給大人</span></button>
+    </div>
   </div>
 
   <!-- 首次校準（拿好姿勢 → 設為中立位） -->
@@ -129,10 +207,35 @@
     <div id="midCol">
       <canvas id="attitude" width="230" height="230"></canvas>
       <button id="calBtn">🎯 校正歸零</button>
+      <!-- context 動作鍵 slot：內容由 src/remote/context-keys.js 注入（可替換）-->
+      <div id="ctxKeys"></div>
     </div>
     <div id="thrTrack">
       <div id="thrLabel">油門</div>
       <div id="thrFill"></div>
+    </div>
+
+    <!-- 複雜版操控列（方向舵/襟翼/配平/迷你儀表）。簡單版 .complex-only 隱藏 → 此列塌成 0 高 -->
+    <div id="complexBar" class="complex-only">
+      <div id="instruments">
+        <span class="instr"><b id="iSpd">0</b><small>km/h</small></span>
+        <span class="instr"><b id="iAlt">0</b><small>m</small></span>
+        <span class="instr"><b id="iHdg">0</b><small>°航向</small></span>
+      </div>
+      <div id="flaps">
+        <span class="ctl-label">襟翼</span>
+        <button class="flap-seg tactile active" data-flap="0">0</button>
+        <button class="flap-seg tactile" data-flap="1">1</button>
+        <button class="flap-seg tactile" data-flap="2">2</button>
+      </div>
+      <div id="trimBox">
+        <span class="ctl-label">配平</span>
+        <input id="trim" type="range" min="-1" max="1" step="0.05" value="0" />
+      </div>
+      <div id="rudderBox">
+        <span class="ctl-label">方向舵</span>
+        <div id="rudderTrack"><div id="rudderKnob"></div></div>
+      </div>
     </div>
   </div>
 

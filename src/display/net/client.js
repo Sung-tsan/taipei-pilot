@@ -4,7 +4,8 @@ import { parseMsg, encodeMsg } from '../../../shared/protocol.js';
 import { PORT, MAX_SLOTS, INPUT_STALE_MS } from '../../../shared/constants.js';
 
 /**
- * @typedef {{ r:number, p:number, th:number, b:number, s:number, at:number }} SlotInput
+ * @typedef {{ r:number, p:number, th:number, b:number, s:number, at:number,
+ *             rudder?:number, flaps?:number, trim?:number }} SlotInput
  * @typedef {'empty'|'active'|'lost'} SlotStatus  lost = 斷線等重連（display 端開盤旋）
  */
 
@@ -53,6 +54,7 @@ export class DisplayNet {
           if (msg.slot !== undefined) {
             this.inputs[msg.slot] = {
               r: msg.r, p: msg.p, th: msg.th, b: msg.b, s: msg.s, at: performance.now(),
+              rudder: msg.rudder, flaps: msg.flaps, trim: msg.trim, // 複雜版欄位（缺＝undefined→消費端補0）
             };
           }
           return; // 高頻訊息不觸發 onState
@@ -85,7 +87,7 @@ export class DisplayNet {
     const input = this.inputs[slot];
     if (!input) return null;
     if (performance.now() - input.at > INPUT_STALE_MS) {
-      return { ...input, r: 0, p: 0 };
+      return { ...input, r: 0, p: 0, rudder: 0 }; // 放手回中（rudder 同 r/p）；flaps/trim 是設定狀態，保留
     }
     return input;
   }
@@ -100,12 +102,18 @@ export class DisplayNet {
   }
 
   /**
-   * 機況回報（遙控器 UI 顯示起落架真實狀態）
+   * 機況回報（遙控器 UI 顯示起落架真實狀態 + 複雜版迷你儀表）。spd/alt/hdg 選送，簡單版忽略。
    * @param {number} slot @param {boolean} gear @param {'parked'|'rolling'|'flying'} mode
+   * @param {number} [spd] @param {number} [alt] @param {number} [hdg]
    */
-  sendPState(slot, gear, mode) {
+  sendPState(slot, gear, mode, spd, alt, hdg) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(encodeMsg({ t: 'pstate', slot, gear, mode }));
+      this.ws.send(encodeMsg({
+        t: 'pstate', slot, gear, mode,
+        ...(spd !== undefined ? { spd } : {}),
+        ...(alt !== undefined ? { alt } : {}),
+        ...(hdg !== undefined ? { hdg } : {}),
+      }));
     }
   }
 
