@@ -44,13 +44,15 @@ export const P = {
 /**
  * @typedef {{ x:number, y:number, z:number }} Vec3
  * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
- *             rudder?:number, flaps?:number, trim?:number }} Input
+ *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean }} Input
  *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
+ *   landAnywhere＝真實模式：關閉機場外低空拉起、機場外觸地＝迫降（缺省 false＝與 v1 一致）。
  * @typedef {'parked'|'rolling'|'flying'} PlaneMode
  * @typedef {{
  *   pos: Vec3, heading: number, pitch: number, bank: number,
  *   speed: number, mode: PlaneMode, autopilot: null|'orbit', gearDown: boolean,
  *   justTookOff: boolean, justLanded: boolean, justBounced: boolean, justNoGear: boolean,
+ *   justForcedTouch: boolean, lastSink: number,
  * }} PlaneState
  * @typedef {{
  *   groundY: (x:number, z:number) => number,
@@ -69,6 +71,7 @@ export function makePlane({ x = 0, z = 0, heading = 0 } = {}) {
     heading, pitch: 0, bank: 0, speed: 0,
     mode: 'parked', autopilot: null, gearDown: true,
     justTookOff: false, justLanded: false, justBounced: false, justNoGear: false,
+    justForcedTouch: false, lastSink: 0,
   };
 }
 
@@ -94,6 +97,7 @@ export function stepPlane(s, rawInput, dt, env) {
   s.justLanded = false;
   s.justBounced = false;
   s.justNoGear = false;
+  s.justForcedTouch = false;
   const input = s.autopilot === 'orbit'
     ? { r: 0, p: 0, th: P.ORBIT_TH, gearUp: !s.gearDown } // bank 直接鎖定，gear 維持原狀
     : rawInput;
@@ -185,7 +189,8 @@ function stepFlying(s, input, dt, env) {
   // 低空柔性拉起（機場區除外 —— 不然永遠降不了落）。
   // ⚠️ 只在 urgency > 0（真的低空）才介入：urgency = 0 時 Math.max(p, 0)
   // 會把整個機場區外的「機頭向下」全部清掉（2026-06-12 修：俯衝失靈主因）。
-  if (!env.inLowFlyZone(s.pos.x, s.pos.z)) {
+  // landAnywhere（真實模式）：關閉這道拉起，讓玩家能降到機場外地面迫降。
+  if (!env.inLowFlyZone(s.pos.x, s.pos.z) && !input.landAnywhere) {
     const urgency = clamp((P.FLOOR_ZONE - agl) / (P.FLOOR_ZONE - P.FLOOR_AGL), 0, 1);
     if (urgency > 0) pitchTarget = Math.max(pitchTarget, urgency * P.MAX_PITCH);
   }
@@ -221,19 +226,28 @@ function stepFlying(s, input, dt, env) {
   const groundY = env.groundY(s.pos.x, s.pos.z);
   if (s.pos.y <= groundY + 1.5 && s.pos.y <= prevY) {
     const sinkRate = (prevY - s.pos.y) / dt;
+    s.lastSink = sinkRate; // 迫降品質判定用
     const gentle = sinkRate < P.LAND_MAX_SINK && Math.abs(s.bank) < P.LAND_MAX_BANK;
-    if (gentle && env.canLandHere(s.pos.x, s.pos.z) && !s.gearDown) {
+    const onRunway = env.canLandHere(s.pos.x, s.pos.z);
+    if (gentle && onRunway && !s.gearDown) {
       // 輪子沒放 → 不准落地，柔彈 + 提醒
       s.justNoGear = true;
       s.pos.y = groundY + 1.5;
       s.pitch = Math.max(s.pitch, 0.18);
       s.justBounced = true;
-    } else if (gentle && env.canLandHere(s.pos.x, s.pos.z)) {
+    } else if (gentle && onRunway) {
       s.mode = 'rolling';
       s.pos.y = groundY;
       s.pitch = 0;
       s.bank = 0;
       s.justLanded = true;
+    } else if (input.landAnywhere && !onRunway) {
+      // 真實模式：機場外觸地 → 迫降。地形/品質（成功/受損/墜毀）由上層判定。
+      s.mode = 'rolling';
+      s.pos.y = groundY;
+      s.pitch = 0;
+      s.bank = 0;
+      s.justForcedTouch = true;
     } else {
       // 柔彈：不墜毀、不懲罰，往上托
       s.pos.y = groundY + 1.5;

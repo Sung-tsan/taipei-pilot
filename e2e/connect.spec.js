@@ -261,3 +261,27 @@ test('設定頁：切換後果模式 + ❤️ 上限 → conseq/localStorage/Sta
 
   await ctx.close();
 });
+
+// —— v1.1-2：真實模式 + 地形辨識（迫降 GO/NO-GO 的好不好玩留 Sung HITL）——
+test('真實模式 + terrainAt 在真實生成場景正確分類（跑道/水/草地）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+
+  // 切真實模式（迫降生效的前提）
+  await display.click('#settingsBtn');
+  await display.click('#modeRow [data-mode="real"]');
+  await display.click('#settingsClose');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.conseq[0].mode)).toBe('real');
+
+  // terrainAt 走真實生成場景：原點=跑道、淡水河頂點=水、極北空地=草地
+  const t = await display.evaluate(() => {
+    const f = /** @type {any} */ (window).__tp.terrainAt;
+    return { runway: f(0, 0), water: f(-6250, 200), grass: f(0, -9500) };
+  });
+  expect(t.runway).toBe('runway');
+  expect(t.water).toBe('water');
+  expect(t.grass).toBe('grass');
+
+  await ctx.close();
+});

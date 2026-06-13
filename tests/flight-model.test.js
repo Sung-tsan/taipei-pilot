@@ -282,3 +282,39 @@ describe('複雜版操控（rudder / flaps / trim，v1.1-0 P4 加法接線）', 
     expect(flapped.speed).toBeCloseTo(P.V_MAX - 2 * P.FLAPS_DRAG, 1);
   });
 });
+
+describe('真實模式可降地（landAnywhere，v1.1-2）', () => {
+  /** @param {any} s @param {any} input @param {number} seconds @param {(s:any)=>void} [each] */
+  function flyEx(s, input, seconds, each) {
+    for (let t = 0; t < seconds; t += DT) { stepPlane(s, input, DT, env); each?.(s); }
+  }
+
+  it('機場外低空俯衝：一般模式被低空保護托住、不觸地', () => {
+    const a = airborne({ x: 0, z: -6000, y: 60, speed: 45 });
+    let touched = false;
+    flyEx(a, { p: -1, th: 0.2 }, 8, (st) => { if (st.justForcedTouch) touched = true; });
+    expect(touched).toBe(false);
+    expect(a.pos.y).toBeGreaterThan(5); // 被托住，不墜地
+  });
+
+  it('landAnywhere：機場外觸地 → justForcedTouch + 轉滾行（交上層判定）', () => {
+    const b = airborne({ x: 0, z: -6000, y: 60, speed: 45 });
+    let touched = false;
+    flyEx(b, { p: -1, th: 0.2, landAnywhere: true }, 8, (st) => { if (st.justForcedTouch) touched = true; });
+    expect(touched).toBe(true);
+    expect(b.mode).toBe('rolling');
+    expect(b.lastSink).toBeGreaterThan(0); // 有記錄下沉率供品質判定
+  });
+
+  it('landAnywhere 不影響跑道正常降落（機場內仍走既有落地）', () => {
+    const s = airborne({ x: -800, z: 0, y: 12, heading: Math.PI / 2, speed: P.V_MIN });
+    s.pitch = -0.05;
+    let landed = false;
+    for (let t = 0; t < 30 && !landed; t += DT) {
+      stepPlane(s, { r: 0, p: -0.15, th: 0, landAnywhere: true }, DT, env);
+      landed = s.justLanded;
+    }
+    expect(landed).toBe(true);
+    expect(s.justForcedTouch).toBe(false); // 跑道內＝正常落地，非迫降
+  });
+});

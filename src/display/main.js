@@ -15,6 +15,8 @@ import { ViewportRenderer } from './render/viewports.js';
 import { Hud } from './ui/hud.js';
 import { GameAudio } from './audio.js';
 import { makeConsequence, registerMishap } from './flight/consequence.js';
+import { judgeForcedLanding, roadClearLength, roadLandable, TERRAIN, T34C_DIMS } from './flight/forced-landing.js';
+import { ROAD_WIDTH } from './scene/city-gen.js';
 import { loadSettings, saveSettings } from './ui/settings-store.js';
 import { MAX_SLOTS } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
@@ -39,6 +41,8 @@ const states = Array.from({ length: MAX_SLOTS }, (_, i) => makePlane(spawnPose(i
 // —— 後果軸（安全模式）：每架一份狀態，per session 從 localStorage 載 ——
 const settings = loadSettings();
 const conseq = Array.from({ length: MAX_SLOTS }, () => makeConsequence(settings.mode, settings.heartsMax));
+/** @type {({terrain:string, result:string}|null)[]} 最近一次迫降結果（e2e/除錯用） */
+const lastForcedLanding = Array.from({ length: MAX_SLOTS }, () => null);
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -231,6 +235,46 @@ function statusHtml(c) {
   return '🛡️安全';
 }
 
+/** 真實模式機場外迫降：地形 + 品質判定 → 成功/受損(冒煙)/墜毀 @param {number} i @param {number} now */
+function handleForcedLanding(i, now) {
+  const s = states[i];
+  fxCooldown[i] = now + 1500;
+  const terrain = taipei.terrainAt(s.pos.x, s.pos.z);
+  let roadOk = false;
+  if (terrain === TERRAIN.ROAD) { // 找所屬車道的最長直段（兩軸取長者）
+    const sample = (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z);
+    const len = Math.max(
+      roadClearLength(sample, s.pos.x, s.pos.z, 'x'),
+      roadClearLength(sample, s.pos.x, s.pos.z, 'z'),
+    );
+    roadOk = roadLandable(ROAD_WIDTH, len, T34C_DIMS);
+  }
+  const result = judgeForcedLanding({ terrain, speed: s.speed, sinkRate: s.lastSink, bank: s.bank, roadOk });
+  audio.bump();
+  net.sendFx(i, 'bump');
+  if (result === 'destroyed') {
+    toast(i, '迫降失敗，墜毀！💥');
+    conseq[i] = makeConsequence(settings.mode, settings.heartsMax);
+    respawnAtRunway(i);
+  } else if (result === 'smoking') {
+    toast(i, '迫降勉強成功…冒煙了 😬');
+    conseq[i].damage = 'smoking';
+    planes[i].setDamaged(true);
+  } else {
+    toast(i, terrain === TERRAIN.WATER ? '水上迫降成功！💦'
+      : terrain === TERRAIN.ROAD ? '馬路迫降成功！🛬' : '迫降成功！👏');
+    audio.landingChime();
+    planes[i].setDamaged(false);
+    onForcedLandingSuccess(i, terrain);
+  }
+  lastForcedLanding[i] = { terrain, result };
+}
+
+/** v1.1-2 P4 事件 hook：迫降成功 → v1.1-3「起降練習」達成、v1.1-4 收集點亮（本輪僅事件點） @param {number} i @param {string} terrain */
+function onForcedLandingSuccess(i, terrain) {
+  // v1.1-3/-4 接：本輪只暴露事件點、無任務/收集內容。
+}
+
 let kbWasActive = false;
 function loop(/** @type {number} */ now) {
   const frame = Math.min((now - last) / 1000, 0.25);
@@ -246,9 +290,11 @@ function loop(/** @type {number} */ now) {
     for (let i = 0; i < MAX_SLOTS; i++) {
       if (!wasDriven[i]) continue;
       const input = inputFor(i);
+      input.landAnywhere = conseq[i].mode === 'real'; // 真實模式：機場外可迫降
       lastInputs[i] = input;
       const prev = { ...states[i].pos };
       stepPlane(states[i], input, DT, env);
+      if (states[i].justForcedTouch) { handleForcedLanding(i, now); continue; }
       const hit = collidePlane(states[i], prev, taipei.solidAt);
       if ((hit || states[i].justBounced) && now > fxCooldown[i]) {
         fxCooldown[i] = now + 1500;
@@ -335,4 +381,8 @@ function loop(/** @type {number} */ now) {
 requestAnimationFrame(loop);
 
 // e2e / debug 鉤子
-/** @type {any} */ (window).__tp = { net, states, conseq, settings, get drawCalls() { return vr.info.render.calls; } };
+/** @type {any} */ (window).__tp = {
+  net, states, conseq, settings, lastForcedLanding,
+  terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
+  get drawCalls() { return vr.info.render.calls; },
+};

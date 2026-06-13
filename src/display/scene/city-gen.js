@@ -13,6 +13,7 @@ import { clamp } from '../../lib/math.js';
 export const CHUNK = 500;        // m（frustum culling 單位）
 const BLOCK = 130;               // 街廓間距（含街道）
 const STREET = 26;               // 街道寬
+export const ROAD_WIDTH = STREET; // 迫降馬路幾何判定共用
 
 /** mulberry32 —— 決定性 PRNG @param {number} seed */
 export function mulberry32(seed) {
@@ -48,6 +49,7 @@ const ROOF_BOX = '#8d99a6';
  *   group: THREE.Group,
  *   heightAt: (x:number, z:number) => number,
  *   buildingAt: (x:number, z:number) => Building|null,
+ *   cellKindAt: (x:number, z:number) => 'street'|'park'|'building'|'lot'|'grass',
  *   stats: { buildings:number, chunks:number, boxes:number },
  * }} City
  */
@@ -63,6 +65,8 @@ export function generateCity({ seed = 20260612, exclude = () => false } = {}) {
   const chunks = new Map();
   let buildingCount = 0;
   let boxCount = 0;
+  /** @type {Map<string, 'building'|'park'|'lot'>} 每格類型（迫降地形辨識用；未記錄＝grass） */
+  const cellKinds = new Map();
 
   /** @param {number} cx @param {number} cz @param {THREE.BufferGeometry} g */
   function push(cx, cz, g) {
@@ -116,6 +120,7 @@ export function generateCity({ seed = 20260612, exclude = () => false } = {}) {
 
       if (roll < density + 0.18) {
         // —— 建築街廓 ——
+        cellKinds.set(`${gx},${gz}`, 'building');
         push(cx, cz, box(cx, cz, padW, 0.6, padW, 0.3, PAD, 0.95 + rnd() * 0.1));
         const n = rnd() < 0.4 ? 2 : 1; // 1–2 棟
         for (let b = 0; b < n; b++) {
@@ -146,6 +151,7 @@ export function generateCity({ seed = 20260612, exclude = () => false } = {}) {
         }
       } else if (roll < density + 0.28) {
         // —— 公園：亮綠地塊 + 樹叢 ——
+        cellKinds.set(`${gx},${gz}`, 'park');
         push(cx, cz, box(cx, cz, padW, 0.8, padW, 0.3, PARK_GREEN, 0.94 + rnd() * 0.12));
         const trees = 4 + Math.floor(rnd() * 5);
         for (let t = 0; t < trees; t++) {
@@ -155,6 +161,7 @@ export function generateCity({ seed = 20260612, exclude = () => false } = {}) {
         }
       } else {
         // —— 空地塊（廣場/低倉庫） ——
+        cellKinds.set(`${gx},${gz}`, 'lot');
         push(cx, cz, box(cx, cz, padW, 0.6, padW, 0.3, PAD, 0.92 + rnd() * 0.1));
         if (rnd() < 0.3) {
           const h = 5 + rnd() * 5;
@@ -194,9 +201,23 @@ export function generateCity({ seed = 20260612, exclude = () => false } = {}) {
     return null;
   }
 
+  /**
+   * 該點屬於哪種市區地塊（迫降地形辨識用）：
+   * 'street'＝街道間隙（馬路）、'park'＝公園、'building'/'lot'＝街廓地塊、'grass'＝市區外/未開發。
+   * @param {number} x @param {number} z
+   * @returns {'street'|'park'|'building'|'lot'|'grass'}
+   */
+  function cellKindAt(x, z) {
+    const gx = Math.round(x / BLOCK), gz = Math.round(z / BLOCK);
+    const padHalf = (BLOCK - STREET) / 2;
+    if (Math.abs(x - gx * BLOCK) > padHalf || Math.abs(z - gz * BLOCK) > padHalf) return 'street';
+    return cellKinds.get(`${gx},${gz}`) ?? 'grass';
+  }
+
   return {
     group,
     buildingAt,
+    cellKindAt,
     heightAt: (x, z) => buildingAt(x, z)?.h ?? 0,
     stats: { buildings: buildingCount, chunks: chunks.size, boxes: boxCount },
   };

@@ -6,9 +6,10 @@ import {
   taipei101, grandHotel, presidentialOffice, cksMemorial,
   miramarWheel, ximenRedHouse, daanPark,
 } from '../../voxel/models/landmarks.js';
-import { makeRivers } from './rivers.js';
+import { makeRivers, inRiverCorridor } from './rivers.js';
 import { generateCity } from './city-gen.js';
 import { makeAirport, RUNWAY_DIR, RUNWAY } from './airport.js';
+import { TERRAIN } from '../flight/forced-landing.js';
 
 /** 松山機場跑道中心 = 世界原點 */
 const LAT0 = 25.0694, LNG0 = 121.5521;
@@ -111,5 +112,16 @@ export function makeTaipei() {
     inLowFlyZone: (x, z) => Math.hypot(x, z) < AIRPORT_ZONE_R,
   };
 
-  return { group, env, landmarks, solidAt, stats: city.stats };
+  /** 地形辨識（迫降判定用） @param {number} x @param {number} z @returns {string} TERRAIN.* */
+  function terrainAt(x, z) {
+    if (env.canLandHere(x, z)) return TERRAIN.RUNWAY;
+    if (inRiverCorridor(x, z)) return TERRAIN.WATER;
+    if (solidAt(x, z)) return TERRAIN.BUILDING; // 地標或樓房 footprint
+    const kind = city.cellKindAt(x, z);
+    if (kind === 'street') return TERRAIN.ROAD;
+    if (kind === 'park') return TERRAIN.PARK;
+    return TERRAIN.GRASS; // grass/lot/建築街廓 pad 的開放地 → 安全草地/空地
+  }
+
+  return { group, env, landmarks, solidAt, terrainAt, stats: city.stats };
 }
