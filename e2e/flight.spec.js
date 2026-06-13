@@ -63,3 +63,25 @@ test('手機連線 + 注入輸入 → 該機起飛；斷線 → 空中盤旋', a
 
   await displayCtx.close();
 });
+
+// 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
+// （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
+test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.keyboard.down('Space'); // 鍵盤驅動紅機 → StatusSlot 亮（後果 badge）
+  const status = display.locator('#hud-0 .status-slot');
+  await expect(status).toBeVisible();
+  await expect(status).not.toBeEmpty();
+
+  const overlap = await display.evaluate(() => {
+    const a = /** @type {Element} */ (document.querySelector('#topBtns')).getBoundingClientRect();
+    const b = /** @type {Element} */ (document.querySelector('#hud-0 .status-slot')).getBoundingClientRect();
+    return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+  });
+  expect(overlap).toBe(false);
+
+  await display.keyboard.up('Space');
+  await ctx.close();
+});

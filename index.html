@@ -77,7 +77,8 @@
     }
     .slot.show { display: flex; }
 
-    .status-slot { top: var(--hud-pad); left: var(--hud-pad); }
+    /* StatusSlot 下移讓出左上全域控制列 #topBtns（top16+高46→底62）；保留設計 §5「StatusSlot=左上」契約 */
+    .status-slot { top: calc(var(--hud-pad) + 54px); left: var(--hud-pad); }
     .task-slot   { top: var(--hud-pad); left: 50%; transform: translateX(-50%); }
     .mode-slot   { top: var(--hud-pad); right: var(--hud-pad); }
     .alt-band    { top: 50%; right: var(--hud-pad); transform: translateY(-50%); }

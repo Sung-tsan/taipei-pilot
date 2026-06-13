@@ -9,7 +9,7 @@
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
 | 單元 | `npm test`（vitest） | **135 passed**（14 files；+v1_1-regression） |
-| 整合 | `npm run e2e`（playwright） | **11 passed**（connect ×9 + flight ×2） |
+| 整合 | `npm run e2e`（playwright） | **12 passed**（connect ×9 + flight ×3，含 overlap regression） |
 
 > JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
@@ -23,6 +23,11 @@
   - 症狀：單獨跑過、整檔跑紅（`#full` 滿員畫面攔截 `#calDoneBtn`）。
   - 根因：server slot 狀態跨測試共用（單一 relay 進程）；前測佔住的 slot 留在 30s grace，後測沒重置就連線 → 拿到 `slots_full`。
   - 修法：在 `connect.spec.js` 加 `test.beforeEach`，用拋棄式 display 連線送 `{t:'reset'}` 並輪詢 `slotStatus` 全 empty 才放行 → 每測試乾淨起點，不依賴前測自我清理。**這是真 bug，已修，非假性紅燈。**
+
+- **2026-06-13 左上 HUD 重疊（HITL Sung 截圖回報）**
+  - 症狀：左上角 `#topBtns`（⚙設定/🎯任務模式/📖收集簿）與 StatusSlot 後果 badge（🛡️安全/❤️/🔥真實）整個疊在一起。
+  - 根因：v1.1-0 的全域控制列 `#topBtns`（`top:16 left:16`）與 v1.1-1 的 `.status-slot`（`top/left: var(--hud-pad)=16`）兩個 sub-stage 各自釘左上同一點，沒人知道對方。
+  - 修法：`.status-slot` 下移到 `top: calc(var(--hud-pad)+54px)`（讓出按鈕列高 46+間距），保留設計 §5「StatusSlot=左上」契約。加 e2e `flight.spec.js`「overlap regression」：驅動紅機 → 比對 `#topBtns` 與 `.status-slot` 邊界框不相交（已驗：還原 CSS 會紅）。
 
 ## 已知非問題 / 假性紅燈（不需修，不要重查重跑）
 
