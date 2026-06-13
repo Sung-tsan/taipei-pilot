@@ -1,0 +1,9 @@
+#!/bin/bash
+# .app 在專案資料夾內：MacOS -> Contents -> *.app -> 專案資料夾（上三層）
+PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+CMD="$PROJECT_DIR/🛫 啟動台北小飛官.command"
+if [ -f "$CMD" ]; then
+  open -a Terminal "$CMD"
+else
+  osascript -e 'display alert "找不到啟動腳本" message "請確認 台北小飛官.app 和「🛫 啟動台北小飛官.command」放在同一個資料夾裡。"'
+fi
