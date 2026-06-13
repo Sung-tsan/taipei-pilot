@@ -34,7 +34,7 @@
 /** 按鍵 bitmask（`in` 訊息的 b 欄；送「期望狀態」非事件） */
 export const BTN = {
   GEAR_UP: 1, // 設起 = 想收起落架（地面上 display 會忽略，離地後自動生效）
-  HORN: 2,    // 預留：喇叭
+  // 喇叭已改為 remote 本地播聲（兩機同玩不互相干擾），不再走 b bitmask。
 };
 
 /** @param {unknown} v @returns {v is number} */

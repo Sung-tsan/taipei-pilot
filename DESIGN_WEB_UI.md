@@ -160,6 +160,7 @@ remote 兩前端共用同一控制協定（[`shared/protocol.js`](shared/protoco
 | 迷你儀表 | — | 空速 / 高度 / 航向（走 `pstate` 擴充回傳）|
 
 - **context 動作鍵＝可替換 slot**（`src/remote/context-keys.js`）：本輪預設「喇叭/降落輔助」，V2 換「開火/鎖定」、任務模式換任務動作——換 config 不改框架。
+- **喇叭＝remote 本地播聲**（不走 display 大螢幕喇叭）：兩機同玩時各自手機發各自的喇叭，聲音不互相干擾（`feedback.horn()`）。
 - **向後相容鐵律**：簡單版/舊 remote 只送 `{s,r,p,th,b}`；複雜版多送 `rudder/flaps/trim`。display 對缺欄位以中立值（0）處理 → 舊 remote 永遠還能飛（e2e 守）。
 - 不動 `tilt.js` 重力投影（v0.2.x 真機調過的手感資產）。
 

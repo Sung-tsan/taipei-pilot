@@ -236,7 +236,6 @@ const DT = 1 / 60;
 let last = performance.now();
 let acc = 0;
 const fxCooldown = [0, 0];
-const hornWas = [false, false]; // 喇叭上升緣偵測（context 鍵 BTN.HORN）
 const debugEl = $('debug');
 const debugOn = new URLSearchParams(location.search).has('debug');
 if (debugOn) debugEl.style.display = 'block';
@@ -416,15 +415,7 @@ function loop(/** @type {number} */ now) {
     acc -= DT;
   }
   reportPState(now);
-
-  // 喇叭（context 鍵 BTN.HORN）：上升緣觸發一次卡通叭叭
-  for (let i = 0; i < MAX_SLOTS; i++) {
-    if (!wasDriven[i]) { hornWas[i] = false; continue; }
-    const live = net.liveInput(i);
-    const honking = !!(live && (live.b & BTN.HORN));
-    if (honking && !hornWas[i]) audio.horn();
-    hornWas[i] = honking;
-  }
+  // 喇叭已改由 remote 本地播（兩機同玩不互相干擾）→ display 端不再處理 horn。
 
   // 視覺同步 + 相機 + 渲染
   const views = [];

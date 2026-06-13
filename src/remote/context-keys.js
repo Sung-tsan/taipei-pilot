@@ -2,7 +2,6 @@
 // remote context 動作鍵 slot：2 顆可替換大鍵。每模式換 config 不改框架（UI 層的 B1）。
 // v1.1-0 預設「喇叭 / 降落輔助」；V2 換「開火 / 鎖定」、任務模式換任務動作。
 // 北極星 DESIGN_WEB_UI.md §6。
-import { BTN } from '../../shared/protocol.js';
 
 /**
  * @typedef {{
@@ -16,7 +15,7 @@ import { BTN } from '../../shared/protocol.js';
 
 /** 自由飛/任務模式預設兩顆。換玩法＝換這份 config。 */
 export const FREE_FLIGHT_KEYS = /** @type {ContextKey[]} */ ([
-  { id: 'horn', label: '🔊 喇叭', hint: '叭叭！', btn: BTN.HORN },
+  { id: 'horn', label: '🔊 喇叭', hint: '叭叭！', action: 'horn' }, // 聲音從自己手機播（兩機同玩不互相干擾）
   { id: 'land', label: '🛬 降落輔助', hint: '收油門＋放輪', action: 'landAssist' },
 ]);
 

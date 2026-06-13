@@ -37,6 +37,26 @@ export class Feedback {
     this._flashEl.classList.add('flash');
   }
 
+  /** 喇叭：卡通「叭—叭」兩短聲，從這支手機自己播 → 兩機同玩不互相干擾（取代原本走 display 喇叭）。 */
+  horn() {
+    const ctx = this._audio;
+    if (!ctx || ctx.state !== 'running') return;
+    [0, 0.17].forEach((dt) => {
+      const t0 = ctx.currentTime + dt;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, t0);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.28, t0 + 0.02);
+      gain.gain.setValueAtTime(0.28, t0 + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.18);
+    });
+  }
+
   /**
    * @param {number} freq @param {number} dur 秒
    */

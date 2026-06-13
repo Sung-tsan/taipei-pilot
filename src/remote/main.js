@@ -167,10 +167,13 @@ function renderGear(gearDown) {
   gearState.textContent = gearDown ? '已放下' : '已收起';
 }
 
-// —— context 動作鍵 slot（喇叭 momentary→BTN.HORN；降落輔助→收油門＋放輪）——
+// —— context 動作鍵 slot（喇叭＝本地播聲；降落輔助＝收油門＋放輪）——
 const ctxKeys = mountContextKeys($('ctxKeys'), FREE_FLIGHT_KEYS, {
   onAction: (action) => {
-    if (action === 'landAssist') {
+    if (action === 'horn') {
+      feedback.unlockAudio(); // 保險：確保 AudioContext running
+      feedback.horn();        // 喇叭從這支手機自己播 → 兩機同玩不互相干擾
+    } else if (action === 'landAssist') {
       throttle.set(0.35);  // 進場油門（仍在 V_GLIDE 之上、不失速），孩子一鍵設定下降
       wantGearUp = false;  // 確保起落架放下
       renderGear(true);
