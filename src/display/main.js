@@ -17,6 +17,11 @@ import { GameAudio } from './audio.js';
 import { makeConsequence, registerMishap } from './flight/consequence.js';
 import { judgeForcedLanding, roadClearLength, roadLandable, TERRAIN, T34C_DIMS } from './flight/forced-landing.js';
 import { ROAD_WIDTH } from './scene/city-gen.js';
+import { RIVERS } from './scene/rivers.js';
+import { MissionRunner } from './missions/mission-runner.js';
+import { airspaceTaipei } from './missions/airspace-taipei.js';
+import { loadCollection, saveCollection } from './missions/collection-store.js';
+import { ringsAlongRiver, MISSION_TYPES } from './missions/missions.js';
 import { loadSettings, saveSettings } from './ui/settings-store.js';
 import { MAX_SLOTS } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
@@ -43,6 +48,29 @@ const settings = loadSettings();
 const conseq = Array.from({ length: MAX_SLOTS }, () => makeConsequence(settings.mode, settings.heartsMax));
 /** @type {({terrain:string, result:string}|null)[]} 最近一次迫降結果（e2e/除錯用） */
 const lastForcedLanding = Array.from({ length: MAX_SLOTS }, () => null);
+
+// —— 任務系統（v1.1-4）：解析器 + runner + 收集 + 玩法模式 ——
+const lmById = new Map(taipei.landmarks.map((l) => [l.id, l]));
+const lmFact = new Map(airspaceTaipei.landmarks.map((l) => [l.id, l.fact.text]));
+const lmSize = new Map(airspaceTaipei.landmarks.map((l) => [l.id, l.size]));
+const landmarkIds = airspaceTaipei.landmarks.map((l) => l.id);
+const riverByName = new Map(RIVERS.map((r) => [r.name, r]));
+// 任務池：landmark_find 附 pos/size 供適應性挑選（先近後遠先大後小）
+const missionPool = airspaceTaipei.missions.map((m) => {
+  if (m.type !== MISSION_TYPES.LANDMARK_FIND) return m;
+  const lm = lmById.get(m.targetId);
+  return { ...m, pos: lm ? { x: lm.x, z: lm.z } : undefined, size: lmSize.get(m.targetId) ?? 1 };
+});
+const collection = loadCollection();
+const runner = new MissionRunner(MAX_SLOTS, {
+  pool: missionPool,
+  landmarkIds,
+  landmarkPos: (id) => { const lm = lmById.get(id); return lm ? { x: lm.x, z: lm.z, clear: lm.clear } : null; },
+  landmarkFact: (id) => lmFact.get(id) ?? '',
+  riverRings: (name, count) => { const r = riverByName.get(name); return r ? ringsAlongRiver(r.points, count) : []; },
+  collection,
+});
+let playMode = 'mission'; // v1.1-4 預設任務模式以呈現新 UI；v1.1-5 出正式玩法選單
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -75,6 +103,7 @@ function refreshDrivers() {
       Object.assign(states[i], makePlane(spawnPose(i)));
       conseq[i] = makeConsequence(settings.mode, settings.heartsMax); // 新上線＝照當前設定重置後果狀態
       planes[i].setDamaged(false);
+      if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
       if (driver0 === 'fake') { // 壓測用：直接丟到市區上空盤旋
         states[i].mode = 'flying';
         states[i].pos = { x: 800, y: 280, z: 3000 };
@@ -85,7 +114,7 @@ function refreshDrivers() {
     if (!driven && wasDriven[i]) planes[i].setVisible(false);
     wasDriven[i] = driven;
     hud.setActive(i, driven);
-    if (driven) hud.applyMode(i, 'free'); // v1.1-0 唯一模式；v1.1-4 起切 mission
+    if (driven) hud.applyMode(i, playMode); // free / mission（v1.1-4）
     // 斷線盤旋（只在空中）；回來就交還操控
     const driver = slotDriver(i);
     const orbiting = (driver === 'lost' || driver === 'fake') && states[i].mode === 'flying';
@@ -158,6 +187,40 @@ for (const b of document.querySelectorAll('#limitRow .set-opt')) {
   });
 }
 renderSettingsUI();
+
+// —— 玩法模式切換（v1.1-4 暫用按鈕；v1.1-5 出正式選單）——
+const playModeBtn = $('playModeBtn');
+function renderPlayMode() { playModeBtn.textContent = playMode === 'mission' ? '🎯 任務模式' : '✈️ 自由飛'; }
+playModeBtn.addEventListener('click', () => {
+  playMode = playMode === 'mission' ? 'free' : 'mission';
+  renderPlayMode();
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (!wasDriven[i]) continue;
+    hud.applyMode(i, playMode);
+    if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
+    else hud.setTask(i, '');
+  }
+});
+renderPlayMode();
+
+// —— 收集簿（點亮地標 + 完成任務；雙人共享）——
+const collectionEl = $('collection');
+function renderCollection() {
+  $('collectionList').innerHTML = airspaceTaipei.landmarks.map((l) => {
+    const lit = collection.lit.has(l.id);
+    return `<li class="${lit ? 'lit' : ''}">${lit ? '⭐' : '☆'} ${l.name}${lit ? `<small>${l.fact.text}</small>` : ''}</li>`;
+  }).join('');
+  $('collectionCount').textContent = `點亮 ${collection.lit.size}/${landmarkIds.length}　任務完成 ${collection.missionsDone.size}`;
+  $('celebrateReplay').style.display = collection.celebrated ? 'inline-block' : 'none';
+}
+$('collectionBtn').addEventListener('click', () => { renderCollection(); collectionEl.classList.remove('hidden'); });
+$('collectionClose').addEventListener('click', () => collectionEl.classList.add('hidden'));
+
+// —— 台北飛透透大慶祝（一次性 gate；收集簿可重看）——
+const celebrationEl = $('celebration');
+function triggerCelebration() { celebrationEl.classList.remove('hidden'); }
+$('celebrationClose').addEventListener('click', () => celebrationEl.classList.add('hidden'));
+$('celebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration(); });
 
 /** @param {number} slot @param {string} text */
 function toast(slot, text) {
@@ -270,9 +333,42 @@ function handleForcedLanding(i, now) {
   lastForcedLanding[i] = { terrain, result };
 }
 
-/** v1.1-2 P4 事件 hook：迫降成功 → v1.1-3「起降練習」達成、v1.1-4 收集點亮（本輪僅事件點） @param {number} i @param {string} terrain */
+/** v1.1-2 P4 事件 hook：迫降成功 → 任務「起降練習」達成（v1.1-4 接） @param {number} i @param {string} terrain */
 function onForcedLandingSuccess(i, terrain) {
-  // v1.1-3/-4 接：本輪只暴露事件點、無任務/收集內容。
+  if (playMode === 'mission') {
+    handleRunnerEvent(i, runner.notify(i, 'forced_landing_success', { x: states[i].pos.x, z: states[i].pos.z }));
+  }
+}
+
+/** 任務達成事件 → 揭曉(fact toast) + 存收集 + 觸發大慶祝 @param {number} i @param {any} ev */
+function handleRunnerEvent(i, ev) {
+  if (!ev) return;
+  hud.toast(i, `🎉 ${ev.fact}`); // 達成揭曉 + fact（DRAFT）
+  audio.landingChime();
+  saveCollection(localStorage, collection);
+  if (ev.celebrate) triggerCelebration();
+}
+
+/** 目標座標（地標 / 下一個圈；高度/起降無方向） @param {number} i @param {any} m */
+function missionTarget(i, m) {
+  if (m.type === MISSION_TYPES.LANDMARK_FIND) { const lm = lmById.get(m.targetId); return lm ? { x: lm.x, z: lm.z } : null; }
+  if (m.type === MISSION_TYPES.RING_ROUTE) return runner.rings[i][runner.ringIndex[i]] ?? null;
+  return null;
+}
+
+/** 任務卡內容：方向箭頭 + 距離 + prompt（DRAFT） @param {number} i @param {import('./flight/flight-model.js').PlaneState} s */
+function taskHtml(i, s) {
+  const m = runner.current[i];
+  if (!m) return '🎉 全部任務完成！';
+  let lead = '🎯 ';
+  const target = missionTarget(i, m);
+  if (target) {
+    const bearing = Math.atan2(target.x - s.pos.x, -(target.z - s.pos.z));
+    const rel = wrapAngle(bearing - s.heading);
+    const dist = Math.hypot(target.x - s.pos.x, target.z - s.pos.z);
+    lead = `<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span> ${(dist / 1000).toFixed(1)}km　`;
+  }
+  return `${lead}${m.prompt.text}`;
 }
 
 let kbWasActive = false;
@@ -307,7 +403,10 @@ function loop(/** @type {number} */ now) {
         }
       }
       if (states[i].justTookOff) toast(i, '起飛！✈️');
-      if (states[i].justLanded) { toast(i, '降落成功！👏'); audio.landingChime(); }
+      if (states[i].justLanded) {
+        toast(i, '降落成功！👏'); audio.landingChime();
+        if (playMode === 'mission') handleRunnerEvent(i, runner.notify(i, 'landed_runway', { x: states[i].pos.x, z: states[i].pos.z }));
+      }
     }
     acc -= DT;
   }
@@ -339,6 +438,10 @@ function loop(/** @type {number} */ now) {
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
     const s = states[i];
+    if (playMode === 'mission') { // 任務檢查 + 任務卡（TaskSlot）
+      handleRunnerEvent(i, runner.update(i, s));
+      hud.setTask(i, taskHtml(i, s));
+    }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
       hud.setMode(i, '🛩 T-34C');
@@ -382,7 +485,14 @@ requestAnimationFrame(loop);
 
 // e2e / debug 鉤子
 /** @type {any} */ (window).__tp = {
-  net, states, conseq, settings, lastForcedLanding,
+  net, states, conseq, settings, lastForcedLanding, runner, collection,
+  get playMode() { return playMode; },
   terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
+  // e2e/dev：直接完成當前任務（略過飛到定點），驗任務迴圈 + 收集 + 慶祝
+  completeMission: (/** @type {number} */ slot) => {
+    const ev = runner.devComplete(slot, { x: states[slot].pos.x, z: states[slot].pos.z });
+    handleRunnerEvent(slot, ev);
+    return ev;
+  },
   get drawCalls() { return vr.info.render.calls; },
 };

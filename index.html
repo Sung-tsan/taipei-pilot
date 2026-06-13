@@ -106,11 +106,13 @@
     .tactile:active { transform: translateY(var(--press-drop)); box-shadow: 0 calc(var(--press-lift) - var(--press-drop)) 0 var(--press-shadow, #0006); }
 
     /* —— 設定（後果軸：安全/溫和/真實 + ❤️ 上限）—— */
-    #settingsBtn {
-      position: fixed; top: 16px; left: 16px; z-index: 11; /* 高於 joinPanel(10)：家長可在 join 畫面先設定 */
-      width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer;
-      font-size: 22px; background: #1a223399; color: var(--ui-ink);
+    /* 左上按鈕列（設定/玩法/收集簿）：高於 joinPanel(10) → 家長可在 join 畫面先設定 */
+    #topBtns { position: fixed; top: 16px; left: 16px; z-index: 11; display: flex; gap: 8px; align-items: center; }
+    .top-btn {
+      height: 46px; min-width: 46px; border-radius: var(--r-pill); border: none; cursor: pointer;
+      font-size: 20px; background: #1a223399; color: var(--ui-ink); padding: 0 12px;
     }
+    #playModeBtn { font-size: 15px; font-weight: 700; }
     #settings { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #0b0f18cc; }
     #settings.hidden { display: none; }
     .settings-card { background: var(--ui-panel); border-radius: var(--r-lg); padding: 26px 30px; max-width: 92vw; text-align: center; display: flex; flex-direction: column; gap: 18px; }
@@ -128,6 +130,32 @@
     .set-opt.active { background: var(--candy-amber); color: var(--ui-bg); --press-shadow: var(--candy-amber-d); }
     #limitSection.disabled { opacity: .4; pointer-events: none; }
     #settingsClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); padding: 14px 0; border-radius: var(--r-md); font-size: 18px; font-weight: 800; }
+
+    /* 任務卡方向箭頭（TaskSlot 內） */
+    .t-arrow { display: inline-block; font-size: 20px; line-height: 1; transition: transform .15s linear; }
+
+    /* —— 收集簿 —— */
+    #collection { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #0b0f18cc; }
+    #collection.hidden { display: none; }
+    .collection-card { background: var(--ui-panel); border-radius: var(--r-lg); padding: 24px 28px; max-width: 92vw; max-height: 86vh; overflow: auto; text-align: center; display: flex; flex-direction: column; gap: 14px; }
+    .collection-card h2 { font-size: 24px; }
+    #collectionCount { font-size: 14px; opacity: .8; }
+    #collectionList { list-style: none; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+    #collectionList li { background: var(--ui-panel-2); border-radius: var(--r-md); padding: 10px 14px; font-size: 16px; opacity: .55; }
+    #collectionList li.lit { opacity: 1; background: #3a4a3a; }
+    #collectionList li small { display: block; font-size: 12px; opacity: .8; margin-top: 2px; }
+    #collectionClose, #celebrateReplay { border: none; cursor: pointer; border-radius: var(--r-md); padding: 12px 18px; font-size: 16px; font-weight: 800; }
+    #collectionClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); }
+    #celebrateReplay { background: var(--candy-amber); color: var(--ui-bg); --press-shadow: var(--candy-amber-d); display: none; }
+
+    /* —— 台北飛透透大慶祝 —— */
+    #celebration { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: radial-gradient(ellipse at center, #1a2a4a 0%, #0b0f18 80%); text-align: center; }
+    #celebration.hidden { display: none; }
+    #celebration .fireworks { font-size: 64px; letter-spacing: 8px; animation: pop 1.2s ease-in-out infinite; }
+    #celebration h1 { font-size: 40px; color: var(--candy-amber); text-shadow: 0 3px 10px #0009; }
+    #celebration p { font-size: 17px; opacity: .85; }
+    @keyframes pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+    #celebrationClose { margin-top: 8px; border: none; cursor: pointer; border-radius: var(--r-md); padding: 14px 26px; font-size: 18px; font-weight: 800; background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); }
 
     /* debug 面板（?debug=1） */
     #debug { position: fixed; left: 10px; bottom: 10px; z-index: 9; font: 12px ui-monospace, monospace; color: #cfe0a8; background: #1a2233aa; padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; }
@@ -178,8 +206,14 @@
 
   <div id="soundHint">🔇 點一下畫面開聲音</div>
 
-  <!-- 設定（後果軸）：齒輪入口 + modal -->
-  <button id="settingsBtn" title="設定">⚙️</button>
+  <!-- 左上按鈕列：設定 / 玩法模式 / 收集簿 -->
+  <div id="topBtns">
+    <button id="settingsBtn" class="top-btn" title="設定">⚙️</button>
+    <button id="playModeBtn" class="top-btn" title="玩法模式">🎯 任務模式</button>
+    <button id="collectionBtn" class="top-btn" title="收集簿">📖</button>
+  </div>
+
+  <!-- 設定（後果軸）modal -->
   <div id="settings" class="hidden">
     <div class="settings-card">
       <h2>設定 ⚙️</h2>
@@ -204,6 +238,25 @@
       </div>
       <button id="settingsClose" class="tactile">完成</button>
     </div>
+  </div>
+
+  <!-- 收集簿（點亮地標 + 完成任務；雙人共享）-->
+  <div id="collection" class="hidden">
+    <div class="collection-card">
+      <h2>📖 收集簿</h2>
+      <div id="collectionCount"></div>
+      <ul id="collectionList"></ul>
+      <button id="celebrateReplay" class="tactile">🎆 重看台北飛透透</button>
+      <button id="collectionClose" class="tactile">完成</button>
+    </div>
+  </div>
+
+  <!-- 台北飛透透大慶祝（全地標點亮一次性 gate）-->
+  <div id="celebration" class="hidden">
+    <div class="fireworks">🎆🎇🎆</div>
+    <h1>台北飛透透！</h1>
+    <p>全部地標都點亮了，你把整個台北都飛遍了！👏</p>
+    <button id="celebrationClose" class="tactile">耶！</button>
   </div>
 
   <div id="debug"></div>

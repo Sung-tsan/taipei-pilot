@@ -64,6 +64,9 @@ export class Hud {
 
   // —— 具名 setter（v1 元素歸位）——
 
+  /** TaskSlot：當前任務卡（v1.1-4：prompt + 方向箭頭/距離） @param {number} slot @param {string} html */
+  setTask(slot, html) { this.set(slot, 'TaskSlot', html); }
+
   /** StatusSlot：機身狀態（v1.1-1 ❤️/後果模式） @param {number} slot @param {string} html */
   setStatus(slot, html) { this.set(slot, 'StatusSlot', html); }
 

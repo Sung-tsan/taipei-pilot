@@ -21,15 +21,15 @@ export function latLngToXZ(lat, lng) {
   return { x: (lng - LNG0) * M_PER_LNG, z: -(lat - LAT0) * M_PER_LAT };
 }
 
-/** 地標清單（facts 之後內容包用；DRAFT 待校稿） */
+/** 地標清單（id 對應 missions/airspace-taipei.js；facts 走 airspace，DRAFT 待校稿） */
 const LANDMARK_DEFS = [
-  { build: taipei101, lat: 25.0339, lng: 121.5645, clear: 230 },
-  { build: grandHotel, lat: 25.0794, lng: 121.5263, clear: 280 },
-  { build: presidentialOffice, lat: 25.0400, lng: 121.5119, clear: 300 },
-  { build: cksMemorial, lat: 25.0347, lng: 121.5217, clear: 260 },
-  { build: miramarWheel, lat: 25.0833, lng: 121.5571, clear: 220 },
-  { build: ximenRedHouse, lat: 25.0421, lng: 121.5071, clear: 170 },
-  { build: daanPark, lat: 25.0300, lng: 121.5360, clear: 380 },
+  { id: 'taipei101', build: taipei101, lat: 25.0339, lng: 121.5645, clear: 230 },
+  { id: 'grandHotel', build: grandHotel, lat: 25.0794, lng: 121.5263, clear: 280 },
+  { id: 'presidentialOffice', build: presidentialOffice, lat: 25.0400, lng: 121.5119, clear: 300 },
+  { id: 'cksMemorial', build: cksMemorial, lat: 25.0347, lng: 121.5217, clear: 260 },
+  { id: 'miramarWheel', build: miramarWheel, lat: 25.0833, lng: 121.5571, clear: 220 },
+  { id: 'ximenRedHouse', build: ximenRedHouse, lat: 25.0421, lng: 121.5071, clear: 170 },
+  { id: 'daanPark', build: daanPark, lat: 25.0300, lng: 121.5360, clear: 380 },
 ];
 
 const AIRPORT_CLEAR = { along: 1900, cross: 800 };
@@ -45,7 +45,7 @@ function runwayLocal(x, z) {
 }
 
 /**
- * @typedef {{ name:string, x:number, z:number, topY:number,
+ * @typedef {{ id:string, name:string, x:number, z:number, topY:number, clear:number,
  *             aabb:{minX:number,maxX:number,minZ:number,maxZ:number,h:number} }} LandmarkInfo
  */
 
@@ -67,7 +67,7 @@ export function makeTaipei() {
     geo.computeBoundingBox();
     const bb = /** @type {THREE.Box3} */ (geo.boundingBox);
     landmarks.push({
-      name: model.name ?? '', x, z, topY: bb.max.y,
+      id: def.id, name: model.name ?? '', x, z, topY: bb.max.y, clear: def.clear,
       aabb: {
         minX: x + bb.min.x, maxX: x + bb.max.x,
         minZ: z + bb.min.z, maxZ: z + bb.max.z,
