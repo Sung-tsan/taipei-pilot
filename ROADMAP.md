@@ -13,7 +13,10 @@
 - 已歷 v0.2.1~v0.2.4 四輪真機迭代（傾斜重力投影、首次校準、起落架、回家箭頭、畫質、雙顯示讓位協定）。
 - Sung 已雙真機 HITL，**手感大致 OK**。**待辦**：HITL 6 項收尾簽核 + DRAFT facts 校稿 → 打 `taipei-pilot-v1.0` tag。
 
-> **規劃進度（2026-06-13）**：V1→V5 北極星定稿；**v1.1 已拆 6 份 handoff**（`handoff/2026-06-13_v1.1-0~5_*.md`，design-HITL 已給過）；**V2 已拆 6 份 handoff**（`handoff/2026-06-13_v2.0-1~5 + v2.1-1`，待拍板已收斂）。v1.0 收尾 + v1.1 實作於另一 session 進行中（v1.1-0 seam 已在 working tree）。
+> **規劃進度（2026-06-13）**：V1→V5 北極星定稿；**v1.1 已拆 6 份 handoff**（`handoff/2026-06-13_v1.1-0~5_*.md`，design-HITL 已給過）；**V2 已拆 6 份 handoff**（`handoff/2026-06-13_v2.0-1~5 + v2.1-1`，待拍板已收斂）。
+>
+> **v1.1 實作進度（2026-06-13 Opus 開發 session）**：**v1.1-0~5 agent 實作全部完成並逐階段 commit**（typecheck 0 / 135 unit / 11 e2e 全綠；各階段 `handoff/*_DONE*.md` 回報）。6 槽位 HUD+remote 雙版+協定（0）／後果軸三檔+設定（1）／迫降系統（2）／任務四型+資料（3）／任務 UI+收集+大慶祝（4）／音效+回歸+DRAFT 清單（5）皆到位。
+> **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。
 
 ---
 
