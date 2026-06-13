@@ -44,8 +44,24 @@ export class PlaneEntity {
     this.shadow.rotation.x = -Math.PI / 2;
     scene.add(this.shadow);
 
+    // 受損冒煙（真實模式 damage=smoking）：機尾後上方一團深煙，預設隱藏
+    this.smoke = new THREE.Mesh(
+      new THREE.SphereGeometry(2.4, 8, 6),
+      new THREE.MeshBasicMaterial({ color: '#3a3a3a', transparent: true, opacity: 0.55 }),
+    );
+    this.smoke.position.set(0, 1.4, 3.2);
+    this.smoke.visible = false;
+    this._smoking = false;
+    this.group.add(this.smoke);
+
     this.group.visible = false;
     scene.add(this.group);
+  }
+
+  /** 受損冒煙開關（真實模式） @param {boolean} smoking */
+  setDamaged(smoking) {
+    this._smoking = smoking;
+    this.smoke.visible = smoking;
   }
 
   /**
@@ -66,6 +82,13 @@ export class PlaneEntity {
     this._gearK += (gearTarget - this._gearK) * expDamp(4, dt);
     this.gear.scale.y = this._gearK;
     this.gear.visible = this._gearK > 0.05;
+
+    // 冒煙脈動（toy 風：縮放 + 透明度輕微抖動）
+    if (this._smoking) {
+      const k = 1 + 0.25 * Math.sin(performance.now() / 90);
+      this.smoke.scale.setScalar(k);
+      /** @type {THREE.MeshBasicMaterial} */ (this.smoke.material).opacity = 0.45 + 0.15 * Math.sin(performance.now() / 70);
+    }
 
     const gy = groundY(s.pos.x, s.pos.z);
     const agl = Math.max(s.pos.y - gy, 0);

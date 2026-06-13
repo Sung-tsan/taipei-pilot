@@ -232,3 +232,32 @@ test('分屏：兩機各自 HUD 槽位渲染（每半屏一套 AltBand）', asyn
   await r2.ctx.close();
   await display.context().close();
 });
+
+// —— v1.1-1：後果軸設定頁 ——
+test('設定頁：切換後果模式 + ❤️ 上限 → conseq/localStorage/StatusSlot 生效', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+
+  // join 畫面就能開設定（齒輪 z-index 高於 joinPanel）
+  await display.click('#settingsBtn');
+  await expect(display.locator('#settings')).toBeVisible();
+  await display.click('#modeRow [data-mode="gentle"]');
+  await display.click('#limitRow [data-limit="2"]');
+
+  // localStorage 寫入
+  await expect.poll(() => display.evaluate(() => localStorage.getItem('tp_consequence_mode'))).toBe('gentle');
+  await expect.poll(() => display.evaluate(() => localStorage.getItem('tp_mishap_limit'))).toBe('2');
+  // conseq 狀態套用
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.conseq[0].mode)).toBe('gentle');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.conseq[0].heartsMax)).toBe(2);
+
+  await display.click('#settingsClose');
+  await expect(display.locator('#settings')).toBeHidden();
+
+  // 鍵盤接管紅機 → StatusSlot 顯示 ❤️（gentle）
+  await display.keyboard.press('KeyW');
+  await expect(display.locator('#hud-0 .status-slot')).toContainText('❤️');
+
+  await ctx.close();
+});

@@ -64,6 +64,9 @@ export class Hud {
 
   // —— 具名 setter（v1 元素歸位）——
 
+  /** StatusSlot：機身狀態（v1.1-1 ❤️/後果模式） @param {number} slot @param {string} html */
+  setStatus(slot, html) { this.set(slot, 'StatusSlot', html); }
+
   /** ModeSlot：機種 + 飛行狀態 @param {number} slot @param {string} html */
   setMode(slot, html) { this.set(slot, 'ModeSlot', html); }
 

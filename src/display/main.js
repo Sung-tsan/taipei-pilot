@@ -14,6 +14,8 @@ import { LandmarkLabels } from './render/labels.js';
 import { ViewportRenderer } from './render/viewports.js';
 import { Hud } from './ui/hud.js';
 import { GameAudio } from './audio.js';
+import { makeConsequence, registerMishap } from './flight/consequence.js';
+import { loadSettings, saveSettings } from './ui/settings-store.js';
 import { MAX_SLOTS } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
 import { wrapAngle } from '../lib/math.js';
@@ -33,6 +35,10 @@ const vr = new ViewportRenderer(/** @type {HTMLCanvasElement} */ ($('gameCanvas'
 const planes = Array.from({ length: MAX_SLOTS }, (_, i) => new PlaneEntity(scene, i));
 const cams = Array.from({ length: MAX_SLOTS }, () => new ChaseCam());
 const states = Array.from({ length: MAX_SLOTS }, (_, i) => makePlane(spawnPose(i)));
+
+// —— 後果軸（安全模式）：每架一份狀態，per session 從 localStorage 載 ——
+const settings = loadSettings();
+const conseq = Array.from({ length: MAX_SLOTS }, () => makeConsequence(settings.mode, settings.heartsMax));
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -63,6 +69,8 @@ function refreshDrivers() {
     const driven = driver0 !== null;
     if (driven && !wasDriven[i]) {
       Object.assign(states[i], makePlane(spawnPose(i)));
+      conseq[i] = makeConsequence(settings.mode, settings.heartsMax); // 新上線＝照當前設定重置後果狀態
+      planes[i].setDamaged(false);
       if (driver0 === 'fake') { // 壓測用：直接丟到市區上空盤旋
         states[i].mode = 'flying';
         states[i].pos = { x: 800, y: 280, z: 3000 };
@@ -110,6 +118,42 @@ function enableAudio() {
 window.addEventListener('pointerdown', enableAudio);
 window.addEventListener('keydown', enableAudio);
 $('soundHint').style.display = 'block';
+
+// —— 設定面板（後果軸三檔 + ❤️ 上限）——
+const settingsEl = $('settings');
+function applySettings() {
+  for (let i = 0; i < MAX_SLOTS; i++) conseq[i] = makeConsequence(settings.mode, settings.heartsMax);
+  planes.forEach((p) => p.setDamaged(false));
+}
+function renderSettingsUI() {
+  for (const b of document.querySelectorAll('#modeRow .set-opt')) {
+    b.classList.toggle('active', b.getAttribute('data-mode') === settings.mode);
+  }
+  const limitVal = settings.heartsMax === Infinity ? 'inf' : String(settings.heartsMax);
+  for (const b of document.querySelectorAll('#limitRow .set-opt')) {
+    b.classList.toggle('active', b.getAttribute('data-limit') === limitVal);
+  }
+  $('limitSection').classList.toggle('disabled', settings.mode !== 'gentle');
+}
+$('settingsBtn').addEventListener('click', () => { renderSettingsUI(); settingsEl.classList.remove('hidden'); });
+$('settingsClose').addEventListener('click', () => settingsEl.classList.add('hidden'));
+for (const b of document.querySelectorAll('#modeRow .set-opt')) {
+  b.addEventListener('click', () => {
+    const m = b.getAttribute('data-mode');
+    if (m === 'safe' || m === 'gentle' || m === 'real') {
+      settings.mode = m;
+      saveSettings(localStorage, settings); applySettings(); renderSettingsUI();
+    }
+  });
+}
+for (const b of document.querySelectorAll('#limitRow .set-opt')) {
+  b.addEventListener('click', () => {
+    const v = b.getAttribute('data-limit');
+    settings.heartsMax = v === 'inf' ? Infinity : Number(v);
+    saveSettings(localStorage, settings); applySettings(); renderSettingsUI();
+  });
+}
+renderSettingsUI();
 
 /** @param {number} slot @param {string} text */
 function toast(slot, text) {
@@ -160,6 +204,33 @@ function reportPState(now) {
   }
 }
 
+/** 把飛機放回跑道（gentle 歸零 / real 墜毀） @param {number} i */
+function respawnAtRunway(i) {
+  Object.assign(states[i], makePlane(spawnPose(i)));
+  planes[i].setDamaged(false);
+}
+/** 撞擊/失誤的後果軸分支 @param {number} i */
+function handleMishap(i) {
+  const res = registerMishap(conseq[i]);
+  switch (res.outcome) {
+    case 'heart_loss': toast(i, `碰！剩 ${conseq[i].hearts} ❤️`); break;
+    case 'reset': toast(i, '沒命了～回機場休息 🛬'); break;
+    case 'smoke': toast(i, '⚠️ 冒煙了！快找地方降落'); planes[i].setDamaged(true); break;
+    case 'destroy': toast(i, '墜毀！回跑道 💥'); break;
+    default: toast(i, '碰！小心開 🙈'); break; // 'bounce'（safe）
+  }
+  if (res.reset) respawnAtRunway(i);
+}
+/** StatusSlot 顯示文字 @param {import('./flight/consequence.js').Conseq} c */
+function statusHtml(c) {
+  if (c.mode === 'gentle') {
+    if (!Number.isFinite(c.heartsMax)) return '❤️∞';
+    return '❤️'.repeat(c.hearts) + '🤍'.repeat(Math.max(0, c.heartsMax - c.hearts));
+  }
+  if (c.mode === 'real') return c.damage === 'smoking' ? '🔥真實 ⚠️冒煙' : '🔥真實';
+  return '🛡️安全';
+}
+
 let kbWasActive = false;
 function loop(/** @type {number} */ now) {
   const frame = Math.min((now - last) / 1000, 0.25);
@@ -183,7 +254,11 @@ function loop(/** @type {number} */ now) {
         fxCooldown[i] = now + 1500;
         net.sendFx(i, 'bump');
         audio.bump();
-        toast(i, states[i].justNoGear ? '先放起落架！🛬' : '碰！小心開 🙈');
+        if (states[i].justNoGear) {
+          toast(i, '先放起落架！🛬'); // 忘放輪＝提醒，所有模式不扣血/不受損
+        } else {
+          handleMishap(i); // 後果軸三檔分支（safe 彈開 / gentle ❤️−1 / real 漸進 damage）
+        }
       }
       if (states[i].justTookOff) toast(i, '起飛！✈️');
       if (states[i].justLanded) { toast(i, '降落成功！👏'); audio.landingChime(); }
@@ -218,6 +293,7 @@ function loop(/** @type {number} */ now) {
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
     const s = states[i];
+    hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
       hud.setMode(i, '🛩 T-34C');
       hud.setAlt(i, `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`);
@@ -259,4 +335,4 @@ function loop(/** @type {number} */ now) {
 requestAnimationFrame(loop);
 
 // e2e / debug 鉤子
-/** @type {any} */ (window).__tp = { net, states, get drawCalls() { return vr.info.render.calls; } };
+/** @type {any} */ (window).__tp = { net, states, conseq, settings, get drawCalls() { return vr.info.render.calls; } };
