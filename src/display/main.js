@@ -347,7 +347,7 @@ function onForcedLandingSuccess(i, terrain) {
 /** 任務達成事件 → 揭曉(fact toast) + 存收集 + 觸發大慶祝 @param {number} i @param {any} ev */
 function handleRunnerEvent(i, ev) {
   if (!ev) return;
-  hud.toast(i, `🎉 ${ev.fact}`); // 達成揭曉 + fact（DRAFT）
+  hud.toast(i, `🎉 ${ev.fact}`); // 達成揭曉 + fact（已定稿）
   audio.missionSuccess();
   saveCollection(localStorage, collection);
   if (ev.celebrate) triggerCelebration();
@@ -360,7 +360,7 @@ function missionTarget(i, m) {
   return null;
 }
 
-/** 任務卡內容：方向箭頭 + 距離 + prompt（DRAFT） @param {number} i @param {import('./flight/flight-model.js').PlaneState} s */
+/** 任務卡內容：方向箭頭 + 距離 + prompt（已定稿） @param {number} i @param {import('./flight/flight-model.js').PlaneState} s */
 function taskHtml(i, s) {
   const m = runner.current[i];
   if (!m) return '🎉 全部任務完成！';

@@ -21,7 +21,7 @@ export function latLngToXZ(lat, lng) {
   return { x: (lng - LNG0) * M_PER_LNG, z: -(lat - LAT0) * M_PER_LAT };
 }
 
-/** 地標清單（id 對應 missions/airspace-taipei.js；facts 走 airspace，DRAFT 待校稿） */
+/** 地標清單（id 對應 missions/airspace-taipei.js；facts 走 airspace，已 Sung 校稿定稿） */
 const LANDMARK_DEFS = [
   { id: 'taipei101', build: taipei101, lat: 25.0339, lng: 121.5645, clear: 230 },
   { id: 'grandHotel', build: grandHotel, lat: 25.0794, lng: 121.5263, clear: 280 },

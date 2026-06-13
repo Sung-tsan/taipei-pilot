@@ -114,10 +114,10 @@ describe('airspace-taipei 資料 + DRAFT 紀律（教訓 B5）', () => {
     }
   });
 
-  it('所有 facts / prompts / 鳥瞰知識 全標 DRAFT（校稿前不視為定稿）', () => {
-    for (const l of airspaceTaipei.landmarks) expect(l.fact.draft).toBe(true);
-    for (const m of airspaceTaipei.missions) expect(m.prompt.draft).toBe(true);
-    for (const k of airspaceTaipei.aerialKnowledge) expect(k.text.draft).toBe(true);
+  it('所有 facts / prompts / 鳥瞰知識 已 Sung 校稿定稿（draft:false，2026-06-13）', () => {
+    for (const l of airspaceTaipei.landmarks) expect(l.fact.draft).toBe(false);
+    for (const m of airspaceTaipei.missions) expect(m.prompt.draft).toBe(false);
+    for (const k of airspaceTaipei.aerialKnowledge) expect(k.text.draft).toBe(false);
   });
 
   it('facts 簡短（≤20 字，給 6 歲）', () => {
