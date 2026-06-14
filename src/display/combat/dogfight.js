@@ -28,7 +28,14 @@ const BALLOON_SCALE = 3.2;        // HITL：氣球放大才找得到（模型 ~4
 const GROUND_RESPAWN_MS = 3000;   // 地面靶打掉後重生間隔
 const PROJ_COLOR = { cartoon: '#ffd84a', boom: '#ff7a33', enemy: '#ff4d4d' };
 const ENEMY_ACCENT = '#3a4250';   // 敵機機身色（暗灰，與紅/藍友機區隔）
-const ENEMY_WEAPON = WEAPON_SPECS.cartoon; // 敵機用卡通彈（命中＝冒煙暫退，6 歲友善）
+const ENEMY_FIRE_GRACE_MS = 3000; // 敵機 spawn 後不開火的緩衝（HITL：別一出現就秒射、玩家來得及反應）
+// 敵彈：刻意「可閃」——慢、弱追蹤（追蹤力再隨難度縮放），與玩家的卡通彈(homing 2.6 黏死)不同。
+/** @type {import('./weapons.js').WeaponSpec} */
+const ENEMY_WEAPON = {
+  id: 'enemy', label: '敵彈', kind: 'air',
+  rangeM: 550, speedMps: 150, homingRate: 0.5, lifetimeSec: 4,
+  cooldownSec: 1.8, magazine: 999, hitRadiusM: 16, sound: 'cartoon',
+};
 
 /** @param {number} lo @param {number} hi */
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
@@ -74,7 +81,7 @@ export class Dogfight {
     this.players = [];
 
     // 敵機 AI（ai_1v1 / ai_2v2）：難度由 main 依局數+adaptive 餵入。
-    /** @type {{id:string, state:any, entity:PlaneEntity, mag:any, alive:boolean}[]} */
+    /** @type {{id:string, state:any, entity:PlaneEntity, mag:any, alive:boolean, spawnAt:number}[]} */
     this.enemies = [];
     this.difficulty = 0.3; // 0..1（難度曲線，main 餵）
     this.handicap = 0.4;   // 0..1（adaptive 放水，main 餵）
@@ -158,7 +165,7 @@ export class Dogfight {
       const state = makePlane({ x: Math.sin(ang) * dist, z: -Math.cos(ang) * dist, heading: ang + Math.PI });
       state.pos.y = 300; state.speed = 55; state.mode = 'flying';
       entity.setVisible(true);
-      this.enemies.push({ id: `e${i}`, state, entity, mag: makeMagazine(ENEMY_WEAPON), alive: true });
+      this.enemies.push({ id: `e${i}`, state, entity, mag: makeMagazine(ENEMY_WEAPON), alive: true, spawnAt: -1 });
     }
   }
 
@@ -377,10 +384,17 @@ export class Dogfight {
         : { r: 0, p: 0, th: 0.5, gearUp: true }; // 沒目標＝平飛
       stepPlane(e.state, input, dt, this.env, this._f16);
       e.entity.sync(e.state, input.th ?? 0.5, dt, this.env.groundY);
-      // 開火：對準最近玩家、在射程內、彈匣冷卻過
-      if (target && canFire(e.mag, now) && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM })) {
-        fire(e.mag, now);
-        const proj = spawnProjectile({ pos: e.state.pos, heading: e.state.heading }, ENEMY_WEAPON, `p${target.slot}`);
+      // 開火：spawn 後 grace 過、對準最近玩家、在射程內、冷卻過
+      if (e.spawnAt < 0) e.spawnAt = now; // 首見＝記 spawn 時間（grace 起點）
+      const armed = now - e.spawnAt > ENEMY_FIRE_GRACE_MS;
+      if (target && armed && canFire(e.mag, now)
+          && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM, coneRad: 0.16 })) {
+        // 追蹤力隨難度（易/放水→近直線可閃；難→中等追蹤、急轉仍可甩）
+        const homing = Math.max(0, 0.18 + 0.5 * this.difficulty - 0.4 * this.handicap);
+        const proj = spawnProjectile({ pos: e.state.pos, heading: e.state.heading }, { ...ENEMY_WEAPON, homingRate: homing }, `p${target.slot}`);
+        // 冷卻隨難度/handicap：易/放水→射更慢（敵彈不耗盡、不補彈）
+        e.mag.readyAt = now + ENEMY_WEAPON.cooldownSec * 1000 * (1.6 - this.difficulty * 0.6 + this.handicap * 1.0);
+        e.mag.ammo = e.mag.max;
         const mesh = new THREE.Mesh(this._projGeo, this._projMatEnemy());
         mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
         this.scene.add(mesh);

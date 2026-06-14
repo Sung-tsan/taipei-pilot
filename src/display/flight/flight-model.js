@@ -19,7 +19,7 @@ export const P = {
   GROUND_DRAG: 6,       // m/s² 地面無油門減速
   GROUND_TOP: 42,       // m/s 地面滾行極速（> V_ROTATE 才起得來）
   MAX_BANK: 0.8,        // rad（≈46°）
-  BANK_RATE: 1.6,       // rad/s
+  BANK_RATE: 2.0,       // rad/s（v2.0-4 HITL：滾得更快才閃得過敵彈；最大傾角不變→自由飛手感大致保留）
   MAX_PITCH: 0.35,      // rad（≈20°，地平線永遠在畫面內 → 減暈）
   PITCH_RATE: 1.0,      // rad/s
   TURN_G: 9.8,          // 自動協調轉彎用

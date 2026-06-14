@@ -47,7 +47,8 @@ export const PLANE_SPECS = {
       V_MIN: 34, V_GLIDE: 30, V_ROTATE: 44,
       V_MAX: 95, V_MAX_GEAR: 70,
       GROUND_TOP: 58, GROUND_ACCEL: 14, ACCEL: 16,
-      MAX_BANK: 1.0, BANK_RATE: 2.6, MAX_PITCH: 0.42, PITCH_RATE: 1.5,
+      // 空戰靈活度（HITL：要閃得過敵彈）：滾得更快、傾角更大、轉得更緊。
+      MAX_BANK: 1.2, BANK_RATE: 3.8, MAX_PITCH: 0.5, PITCH_RATE: 2.2, TURN_G: 15,
     },
     dims: { wingspan: 10, minRunwayLength: 450 }, // 噴射機要更長的迫降直段
     fuelSec: 480, // 耗油兇（航程更短）

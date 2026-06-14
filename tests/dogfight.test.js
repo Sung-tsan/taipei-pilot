@@ -216,20 +216,36 @@ describe('Dogfight 整合', () => {
     expect(df.aliveEnemies()).toBe(0);
   });
 
-  it('敵機開火 → enemyHitPlayer（命中後果由 main 套用）', () => {
+  it('敵機開火 → enemyHitPlayer（首發 grace 後、命中後果由 main 套用）', () => {
     df.setMode('ai_1v1');
-    df.setDifficulty(1, 0); // 最強：積極開火
+    df.setDifficulty(1, 0); // 最強：積極開火、追蹤力較高
     const ppos = { x: 0, y: 200, z: 0 };
-    df.enemies[0].state.pos = { x: 0, y: 200, z: 200 }; // 玩家正後方近距、朝北對著玩家
+    df.enemies[0].state.pos = { x: 0, y: 200, z: 450 }; // 玩家後方、朝北對著玩家、在射程內
     df.enemies[0].state.heading = 0;
     let hit = false, now = 0;
-    for (let t = 0; t < 6000; t += DT * 1000) {
+    for (let t = 0; t < 9000; t += DT * 1000) { // > 3s grace + 彈道飛行
       df.setPlayers([{ slot: 0, pos: ppos, alive: true }]);
       const evs = df.step(DT, now);
       if (evs.some((e) => e.kind === 'enemyHitPlayer' && e.victim === 0)) { hit = true; break; }
       now += DT * 1000;
     }
     expect(hit).toBe(true);
+  });
+
+  it('首發 grace：敵機 spawn 後短時間內不開火（HITL：來得及反應）', () => {
+    df.setMode('ai_1v1');
+    df.setDifficulty(1, 0);
+    const ppos = { x: 0, y: 200, z: 0 };
+    df.enemies[0].state.pos = { x: 0, y: 200, z: 300 };
+    df.enemies[0].state.heading = 0;
+    let firedDuringGrace = false, now = 0;
+    for (let t = 0; t < 2500; t += DT * 1000) { // grace=3000ms 內
+      df.setPlayers([{ slot: 0, pos: ppos, alive: true }]);
+      df.step(DT, now);
+      if (df.projectiles.some((p) => p.fromEnemy)) { firedDuringGrace = true; break; }
+      now += DT * 1000;
+    }
+    expect(firedDuringGrace).toBe(false);
   });
 
   it('spawnWave：全滅後重生新一波', () => {
