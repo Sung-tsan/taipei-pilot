@@ -255,6 +255,36 @@ test('天氣：安全模式恆晴、設霧/雨 → fog 拉近（modulate world.j
   await ctx.close();
 });
 
+// v3.0-2：真實模式 + 雨 → 飛行中吃側風(wind 餵進輸入)；亂流鏡頭晃動可在設定關掉(減暈)。
+test('側風/亂流：真實模式+雨 → 側風進輸入；鏡頭晃動可關', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 切真實模式（設定頁）+ 設雨
+  await display.click('#settingsBtn');
+  await display.click('#modeRow [data-mode="real"]');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.setWeather('rain'));
+  // 鏡頭晃動：關 → 設定生效（減暈）
+  await display.click('#shakeRow [data-shake="0"]');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.settings.camShake)).toBe(false);
+  await display.click('#settingsClose');
+
+  // 鍵盤起飛 → 飛行中側風 wind 餵進輸入（real + 有風 + flying）
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect.poll(() => display.evaluate(() => {
+    const w = /** @type {any} */ (window).__tp.lastInputs[0].wind;
+    return w ? Math.hypot(w.x, w.z) : 0;
+  })).toBeGreaterThan(0); // 真實+雨+飛行 → 有側風
+  await display.keyboard.up('Space');
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

@@ -18,8 +18,9 @@ export class ChaseCam {
   /**
    * @param {import('../flight/flight-model.js').PlaneState} s
    * @param {number} dt
+   * @param {number} [shake] 亂流鏡頭微晃幅度 0..1（v3.0-2，極輕、可關；減暈）
    */
-  update(s, dt) {
+  update(s, dt, shake = 0) {
     const dx = Math.sin(s.heading), dz = -Math.cos(s.heading);
     const targetPos = new THREE.Vector3(
       s.pos.x - dx * BACK,
@@ -45,5 +46,13 @@ export class ChaseCam {
     this.cam.lookAt(this._look);
     // 輕微帶一點 bank 的鏡頭傾斜（有臨場感但角度小，減暈）
     this.cam.rotateZ(s.bank * 0.25);
+    // 亂流微晃（極輕、平滑噪音；shake=0 或關閉＝完全無晃，減暈鐵律）
+    if (shake > 0) {
+      const t = performance.now() / 1000;
+      const jz = (Math.sin(t * 23) + Math.sin(t * 37 + 1)) * 0.5;
+      const jx = (Math.sin(t * 29 + 2) + Math.sin(t * 41 + 3)) * 0.5;
+      this.cam.rotateZ(jz * 0.012 * shake);
+      this.cam.rotateX(jx * 0.010 * shake);
+    }
   }
 }

@@ -5,17 +5,27 @@
 
 /** @typedef {'safe'|'gentle'|'real'} ConsequenceMode */
 /** @typedef {'intact'|'smoking'|'destroyed'} Damage */
-/** @typedef {{ mode:ConsequenceMode, heartsMax:number, hearts:number, damage:Damage }} Conseq */
-/** @typedef {'bounce'|'heart_loss'|'reset'|'smoke'|'destroy'} MishapOutcome */
+/** @typedef {{ mode:ConsequenceMode, heartsMax:number, hearts:number, damage:Damage, damagePct:number }} Conseq */
+/** @typedef {'bounce'|'heart_loss'|'reset'|'smoke'|'destroy'|'damage'} MishapOutcome */
 
 export const CONSEQUENCE_MODES = /** @type {ConsequenceMode[]} */ (['safe', 'gentle', 'real']);
+
+/** 受損百分比門檻（v3.0-2：離散 damage 改由連續 % 派生）：≥40% 冒煙、=100% 毀。 */
+export const SMOKE_PCT = 40;
+
+/** @param {number} pct @returns {Damage} 由受損% 派生離散狀態 */
+export function deriveDamage(pct) {
+  if (pct >= 100) return 'destroyed';
+  if (pct >= SMOKE_PCT) return 'smoking';
+  return 'intact';
+}
 
 /**
  * @param {ConsequenceMode} mode @param {number} heartsMax （gentle 用；可為 Infinity）
  * @returns {Conseq}
  */
 export function makeConsequence(mode, heartsMax) {
-  return { mode, heartsMax, hearts: mode === 'gentle' ? heartsMax : 0, damage: 'intact' };
+  return { mode, heartsMax, hearts: mode === 'gentle' ? heartsMax : 0, damage: 'intact', damagePct: 0 };
 }
 
 /**
@@ -25,6 +35,7 @@ export function makeConsequence(mode, heartsMax) {
 export function setMode(c, mode) {
   c.mode = mode;
   c.damage = 'intact';
+  c.damagePct = 0;
   c.hearts = mode === 'gentle' ? c.heartsMax : 0;
 }
 
@@ -58,13 +69,34 @@ export function registerMishap(c) {
     case 'real': {
       if (c.damage === 'intact') {
         c.damage = 'smoking';
+        c.damagePct = Math.max(c.damagePct, SMOKE_PCT + 10); // 同步 %（碰撞＝大塊受損）
         return { outcome: 'smoke', reset: false };
       }
       c.damage = 'intact'; // 墜毀 → 回跑道、damage 重置
+      c.damagePct = 0;
       return { outcome: 'destroy', reset: true };
     }
     case 'safe':
     default:
       return { outcome: 'bounce', reset: false };
   }
+}
+
+/**
+ * 連續受損（v3.0-2 天氣：側風劣質著陸 / 亂流甩出包絡）。**只真實模式**累加 damagePct，
+ * 由 % 派生 smoking/destroyed；安全/溫和不受天氣傷（回 bounce）。
+ * @param {Conseq} c @param {number} pct 本次受損百分點（>0）
+ * @returns {{ outcome:MishapOutcome, reset:boolean }} reset=true → 放回跑道（毀）
+ */
+export function addDamagePct(c, pct) {
+  if (c.mode !== 'real' || !(pct > 0)) return { outcome: 'bounce', reset: false };
+  const was = c.damage;
+  c.damagePct = Math.min(100, c.damagePct + pct);
+  c.damage = deriveDamage(c.damagePct);
+  if (c.damage === 'destroyed') {
+    c.damage = 'intact'; c.damagePct = 0; // 毀 → 回跑道、重置
+    return { outcome: 'destroy', reset: true };
+  }
+  if (c.damage === 'smoking' && was !== 'smoking') return { outcome: 'smoke', reset: false };
+  return { outcome: 'damage', reset: false }; // 受損累加但未跨檻
 }

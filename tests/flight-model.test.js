@@ -250,6 +250,39 @@ describe('複雜版操控（rudder / flaps / trim，v1.1-0 P4 加法接線）', 
     expect(b.speed).toBe(a.speed);
   });
 
+  // —— v3.0-2：側風 wind / 亂流 gust（純加法，缺省＝v1 位元不變）——
+  it('中立安全：不帶 wind/gust 與帶 0 wind/0 gust → 位元級一致', () => {
+    const a = airborne({ z: -4000 });
+    const b = airborne({ z: -4000 });
+    for (let t = 0; t < 4; t += DT) {
+      stepPlane(a, { r: 0.2, p: 0, th: 0.6 }, DT, env);
+      stepPlane(b, { r: 0.2, p: 0, th: 0.6, wind: { x: 0, z: 0 }, gust: { roll: 0, pitch: 0 } }, DT, env);
+    }
+    expect(b.pos).toEqual(a.pos);
+    expect(b.heading).toBe(a.heading);
+    expect(b.bank).toBe(a.bank);
+  });
+
+  it('側風：wind.x 把飛機往東漂（相對無風）', () => {
+    const calm = airborne({ z: -4000 });
+    const windy = airborne({ z: -4000 });
+    for (let t = 0; t < 3; t += DT) {
+      stepPlane(calm, { r: 0, p: 0, th: 0.6 }, DT, env);
+      stepPlane(windy, { r: 0, p: 0, th: 0.6, wind: { x: 8, z: 0 } }, DT, env);
+    }
+    expect(windy.pos.x).toBeGreaterThan(calm.pos.x + 10); // 被側風吹偏東
+  });
+
+  it('亂流：gust.roll 把實際 bank 推離無擾動值', () => {
+    const calm = airborne({ z: -4000 });
+    const gusty = airborne({ z: -4000 });
+    for (let t = 0; t < 1; t += DT) {
+      stepPlane(calm, { r: 0, p: 0, th: 0.6 }, DT, env);
+      stepPlane(gusty, { r: 0, p: 0, th: 0.6, gust: { roll: 0.3, pitch: 0 } }, DT, env);
+    }
+    expect(Math.abs(gusty.bank)).toBeGreaterThan(Math.abs(calm.bank)); // 亂流把機身搖起來
+  });
+
   it('方向舵 → 直接 yaw（rudder>0 順時針增、rudder<0 逆時針減）', () => {
     const straight = airborne({ heading: 0 }); flyEx(straight, { r: 0, p: 0, th: 0.5 }, 2);
     const right = airborne({ heading: 0 }); flyEx(right, { r: 0, p: 0, th: 0.5, rudder: 1 }, 2);

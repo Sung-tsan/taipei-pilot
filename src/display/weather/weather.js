@@ -18,6 +18,21 @@ const MILD = new Set([WEATHER_TYPES.CLEAR, WEATHER_TYPES.CLOUDY]);
 export function isRough(type) { return type === WEATHER_TYPES.RAIN || type === WEATHER_TYPES.FOG; }
 
 /**
+ * 天氣 → 操控外力強度（v3.0-2；只真實模式由 main 套用）。
+ * windSpeed＝側風 m/s（需 crab 抵銷）；turb＝亂流強度 0..1（姿態擾動 + 鏡頭微晃）。
+ * 台北（松山）數值，寧可先弱（減暈）；島嶼強側風/亂流 V5。
+ * @param {string} type @returns {{ windSpeed:number, turb:number }}
+ */
+export function weatherForces(type) {
+  switch (type) {
+    case WEATHER_TYPES.RAIN: return { windSpeed: 6, turb: 0.30 };
+    case WEATHER_TYPES.FOG: return { windSpeed: 4, turb: 0.15 };
+    case WEATHER_TYPES.CLOUDY: return { windSpeed: 3, turb: 0.12 };
+    default: return { windSpeed: 0, turb: 0 }; // 晴＝無風無亂流
+  }
+}
+
+/**
  * @typedef {{ clear:number, cloudy:number, rain:number, fog:number }} WeatherProbs
  * @typedef {{ name:string, draft:boolean, probs:WeatherProbs }} WeatherProfile
  */

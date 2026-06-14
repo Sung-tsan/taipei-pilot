@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
-import { makeConsequence, setMode, setHeartsMax, registerMishap } from '../src/display/flight/consequence.js';
+import { makeConsequence, setMode, setHeartsMax, registerMishap, addDamagePct, deriveDamage, SMOKE_PCT } from '../src/display/flight/consequence.js';
 
 describe('後果軸 reducer（safe / gentle / real）', () => {
   it('safe：撞擊永遠彈開、不墜、不扣', () => {
@@ -52,5 +52,43 @@ describe('後果軸 reducer（safe / gentle / real）', () => {
     setHeartsMax(c, 5);
     expect(c.heartsMax).toBe(5);
     expect(c.hearts).toBe(5);
+  });
+
+  // —— v3.0-2：受損百分比（離散 damage 由 % 派生）——
+  it('deriveDamage：<40 intact、≥40 smoking、=100 destroyed', () => {
+    expect(deriveDamage(0)).toBe('intact');
+    expect(deriveDamage(SMOKE_PCT - 1)).toBe('intact');
+    expect(deriveDamage(SMOKE_PCT)).toBe('smoking');
+    expect(deriveDamage(100)).toBe('destroyed');
+  });
+
+  it('addDamagePct（real）：累加 → 跨 40% 冒煙 → 達 100% 毀(reset 並清零)', () => {
+    const c = makeConsequence('real', 0);
+    expect(addDamagePct(c, 20)).toEqual({ outcome: 'damage', reset: false }); // 20% 未跨檻
+    expect(c.damage).toBe('intact');
+    expect(addDamagePct(c, 25).outcome).toBe('smoke'); // 45% → 冒煙
+    expect(c.damage).toBe('smoking');
+    const r = addDamagePct(c, 60); // 105→100 → 毀
+    expect(r).toEqual({ outcome: 'destroy', reset: true });
+    expect(c.damagePct).toBe(0); // 重置
+    expect(c.damage).toBe('intact');
+  });
+
+  it('addDamagePct：安全/溫和不受天氣傷（bounce、不累加）', () => {
+    const safe = makeConsequence('safe', 3);
+    expect(addDamagePct(safe, 80)).toEqual({ outcome: 'bounce', reset: false });
+    expect(safe.damagePct).toBe(0);
+    const gentle = makeConsequence('gentle', 3);
+    expect(addDamagePct(gentle, 80).outcome).toBe('bounce');
+    expect(gentle.damagePct).toBe(0);
+  });
+
+  it('registerMishap real 同步 damagePct（碰撞也走同一條 damage）', () => {
+    const c = makeConsequence('real', 0);
+    registerMishap(c); // intact→smoking
+    expect(c.damage).toBe('smoking');
+    expect(c.damagePct).toBeGreaterThanOrEqual(SMOKE_PCT);
+    registerMishap(c); // →destroy
+    expect(c.damagePct).toBe(0);
   });
 });

@@ -45,10 +45,13 @@ export const P = {
  * @typedef {{ x:number, y:number, z:number }} Vec3
  * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
  *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean,
- *             fire?:boolean, weaponSwitch?:boolean }} Input
+ *             fire?:boolean, weaponSwitch?:boolean,
+ *             wind?:{x:number,z:number}, gust?:{roll:number,pitch:number} }} Input
  *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
  *   landAnywhere＝真實模式：關閉機場外低空拉起、機場外觸地＝迫降（缺省 false＝與 v1 一致）。
  *   fire/weaponSwitch＝空戰按鍵（flight-model 忽略，由 main 的空戰邏輯消費）。
+ *   wind＝側風持續側向位移(m/s，加在水平位移上，需 crab 修正)；gust＝亂流姿態擾動(疊 bank/pitch 目標)。
+ *   兩者缺省＝0＝與 v1 逐位元一致（純加法+中立預設，只真實模式由 main 餵非 0）。
  * @typedef {'parked'|'rolling'|'flying'} PlaneMode
  * @typedef {{
  *   pos: Vec3, heading: number, pitch: number, bank: number,
@@ -211,6 +214,9 @@ function stepFlying(s, input, dt, env, params) {
     bankTarget = lerp(bankTarget, turnDir * params.MAX_BANK, w);
   }
 
+  // 亂流（v3.0-2）：把姿態目標疊上有界擾動（gust 由 main 從 weather×時間噪音算；缺＝0＝v1）。
+  if (input.gust) { bankTarget += input.gust.roll; pitchTarget += input.gust.pitch; }
+
   s.bank = approach(s.bank, bankTarget, params.BANK_RATE, dt);
   s.pitch = approach(s.pitch, pitchTarget, params.PITCH_RATE, dt);
 
@@ -225,6 +231,8 @@ function stepFlying(s, input, dt, env, params) {
   // 5. 位移
   const prevY = s.pos.y;
   moveForward(s, dt);
+  // 側風（v3.0-2）：持續水平側移，玩家需 crab（機頭頂風）抵銷。缺＝0＝v1 不漂。
+  if (input.wind) { s.pos.x += input.wind.x * dt; s.pos.z += input.wind.z * dt; }
 
   // 6. 接地判定 —— 只在「下降中」檢查（剛離地爬升時貼地不算觸地）
   const groundY = env.groundY(s.pos.x, s.pos.z);

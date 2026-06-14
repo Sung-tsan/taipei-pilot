@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WEATHER_TYPES, WEATHER_PROFILES, weatherProfile, makeWeather,
-  gateProbs, rollWeather, isRough, DEFAULT_AIRPORT,
+  gateProbs, rollWeather, isRough, weatherForces, DEFAULT_AIRPORT,
 } from '../src/display/weather/weather.js';
 
 describe('weatherProfile / 登記', () => {
@@ -70,5 +70,18 @@ describe('rollWeather', () => {
   it('壞 rng（NaN/超界）→ 安全側回晴，不爆', () => {
     expect(rollWeather(WEATHER_PROFILES.tsa, 'real', () => NaN)).toBe(WEATHER_TYPES.CLEAR);
     expect(rollWeather(WEATHER_PROFILES.tsa, 'real', () => 5)).toBe(WEATHER_TYPES.CLEAR);
+  });
+});
+
+describe('weatherForces（天氣→側風/亂流強度）', () => {
+  it('晴＝無風無亂流；雨最兇、霧/多雲較弱', () => {
+    expect(weatherForces(WEATHER_TYPES.CLEAR)).toEqual({ windSpeed: 0, turb: 0 });
+    const rain = weatherForces(WEATHER_TYPES.RAIN);
+    const fog = weatherForces(WEATHER_TYPES.FOG);
+    expect(rain.windSpeed).toBeGreaterThan(0);
+    expect(rain.turb).toBeGreaterThan(fog.turb); // 雨亂流 > 霧
+  });
+  it('未知型別 → 無風（安全側）', () => {
+    expect(weatherForces('???')).toEqual({ windSpeed: 0, turb: 0 });
   });
 });
