@@ -3,13 +3,13 @@
 > 每個 handoff §0-PRE 要求「baseline 全綠才動工」。本檔記錄**當前綠燈基準**、**已修的坑**、以及
 > **已知非問題（假性紅燈）**——下次 session 照表對照即可，不用重新調查同一件事或重跑驗證。
 
-## 當前 baseline（最後更新 2026-06-14，含 V2[已 tag v2.0] + V3 v3.0-1~3（天氣+側風亂流+生活感日夜））
+## 當前 baseline（最後更新 2026-06-14，含 V2[已 tag v2.0] + V3 v3.0-1~4（天氣全套，待 tag v3.0））
 
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
 | 單元 | `npm test`（vitest） | **313 passed**（28 files；+weapons/enemy-ai/race/balloon/dogfight/minimap/missile/plane-collision/plane-specs/context-keys） |
-| 整合 | `npm run e2e`（playwright） | **23 passed**（connect ×11 + flight ×12；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1/競速 regression） |
+| 整合 | `npm run e2e`（playwright） | **24 passed**（connect ×11 + flight ×13；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1/競速 regression） |
 
 > JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
