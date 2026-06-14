@@ -86,6 +86,8 @@ const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @ty
 const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
 const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY });
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
+const pvpInvuln = states.map(() => 0);  // PvP 被擊落後的無敵/暫退到期時間（per slot）
+const pvpSmoke = states.map(() => false); // PvP 冒煙中（無敵期過了要清）
 const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
 let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
 
@@ -233,7 +235,8 @@ function renderModeMenuUI() {
 function applyPlayMode(mode) {
   playMode = mode;
   renderModeBtn();
-  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：spawn/清氣球靶場
+  if (playMode === 'dogfight') dogfight.setMode(dogfightMode); // 設 pvp 旗標（balloons/pvp）
+  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球或清場打玩家
   net.sendMode(playMode);                       // 廣播給遙控器 → 換 context 鍵（發射/換武器）
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
@@ -257,7 +260,13 @@ for (const b of document.querySelectorAll('#pmRow .set-opt')) {
   b.addEventListener('click', () => { const m = b.getAttribute('data-pm'); if (m) { applyPlayMode(m); renderModeMenuUI(); } });
 }
 for (const b of document.querySelectorAll('#dmRow .set-opt')) {
-  b.addEventListener('click', () => { const m = b.getAttribute('data-dm'); if (m) { dogfightMode = m; renderModeMenuUI(); } });
+  b.addEventListener('click', () => {
+    const m = b.getAttribute('data-dm');
+    if (!m) return;
+    dogfightMode = m;
+    if (playMode === 'dogfight') dogfight.setMode(dogfightMode); // 即時切 balloons↔pvp（清/spawn 氣球）
+    renderModeMenuUI();
+  });
 }
 for (const b of document.querySelectorAll('#planeRow .set-opt')) {
   b.addEventListener('click', () => { const p = b.getAttribute('data-plane'); if (p) { setPlane(p); renderModeMenuUI(); } });
@@ -435,8 +444,19 @@ function taskHtml(i, s) {
 
 /** 空戰每步：換武器(上升緣)/對空鎖定/發射 + 彈丸推進 + 命中事件 @param {number} now */
 function updateDogfight(now) {
+  // PvP：餵入「可命中玩家」清單（在空中、且不在被擊落暫退無敵期內）
+  if (dogfight.pvp) {
+    const players = [];
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      if (wasDriven[i] && states[i].mode === 'flying' && now >= pvpInvuln[i]) players.push({ slot: i, pos: states[i].pos, alive: true });
+    }
+    dogfight.setPlayers(players);
+  } else dogfight.setPlayers([]);
+
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) { prevSwitchBit[i] = false; continue; }
+    // 冒煙暫退無敵期過了 → 清冒煙
+    if (pvpSmoke[i] && now >= pvpInvuln[i]) { pvpSmoke[i] = false; planes[i].setDamaged(false); }
     const s = states[i];
     if (s.mode !== 'flying') { // 回到地面（機場附近）→ 補滿彈藥
       if (Math.hypot(s.pos.x, s.pos.z) < 2000) dogfight.reloadAll(i);
@@ -446,7 +466,7 @@ function updateDogfight(now) {
     const inp = lastInputs[i];
     if (inp.weaponSwitch && !prevSwitchBit[i]) toast(i, `🔁 ${dogfight.cycleWeapon(i)}`); // 換武器（上升緣循環）
     prevSwitchBit[i] = !!inp.weaponSwitch;
-    dogfight.updateLock(i, s); // 對空鎖定（最近氣球，飛近自動）
+    dogfight.updateLock(i, s); // 對空鎖定（PvP 對手 / 最近氣球，飛近自動）
     if (inp.fire) {
       const r = dogfight.tryFire(i, s, now); // 依武器冷卻節流
       if (r.fired && r.sound) { audio.weaponFire(r.sound); net.sendFx(i, 'bump'); }
@@ -457,8 +477,28 @@ function updateDogfight(now) {
     else if (ev.kind === 'boom') { audio.groundBoom(); toast(ev.owner, '🎯 紅區命中！'); }
     else if (ev.kind === 'exempt') toast(ev.owner, '⛔ 地標不能打（保護）'); // 红線回饋
     else if (ev.kind === 'cleared') { audio.missionSuccess(); for (let i = 0; i < MAX_SLOTS; i++) if (wasDriven[i]) toast(i, '🎈 氣球全打完！再來一輪'); }
+    else if (ev.kind === 'playerHit') handlePvpHit(ev.victim, ev.owner, now);
     // miss：不吵（無 toast）
   }
+}
+
+/** PvP 被擊中後果（接後果軸）：安全/溫和＝冒煙暫退·幾秒重生回場（非淘汰）；真實＝擊落出局。 @param {number|undefined} victim @param {number} shooter @param {number} now */
+function handlePvpHit(victim, shooter, now) {
+  if (victim == null) return;
+  toast(shooter, '🎯 擊落對手！');
+  audio.explode();
+  net.sendFx(victim, 'bump');
+  if (settings.mode === 'real') {
+    toast(victim, '💥 被擊落出局！'); // 真實：擊落出局（暫以較長暫退重生呈現；正式淘汰/觀戰留後）
+    pvpInvuln[victim] = now + 4000;
+  } else {
+    toast(victim, '😵 被打中！冒煙暫退'); // 安全/溫和：非淘汰
+    if (settings.mode === 'gentle') registerMishap(conseq[victim]); // 溫和：❤️−1
+    pvpInvuln[victim] = now + 2500;
+  }
+  respawnAtRunway(victim);          // 暫退回場（teleport 回機場重整）
+  planes[victim].setDamaged(true);  // 冒煙（無敵期結束清）
+  pvpSmoke[victim] = true;
 }
 
 /** 兩機相撞（HITL）：安全＝幽靈穿透不處罰；溫和/真實＝受損甚至爆炸（接後果軸）。 @param {number} now */

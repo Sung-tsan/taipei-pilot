@@ -150,6 +150,41 @@ describe('Dogfight 整合', () => {
     expect(/** @type {any} */ (g).distM).toBeCloseTo(300, 0);
   });
 
+  it('PvP：setMode(pvp) 清氣球、鎖定對手 → 擊中 → playerHit + 擊落/命中計分', () => {
+    df.setMode('pvp');
+    expect(df.pvp).toBe(true);
+    expect(df.balloonTotal).toBe(0); // PvP 清氣球（對手就是靶）
+    const p0 = { x: 0, y: 200, z: 0 }, p1 = { x: 0, y: 200, z: -300 };
+    df.setPlayers([{ slot: 0, pos: p0, alive: true }, { slot: 1, pos: p1, alive: true }]);
+    expect(df.updateLock(0, { pos: p0, heading: 0 })).toBe('p1'); // 鎖到對手
+    df.tryFire(0, { pos: p0, heading: 0 }, 1000);
+    /** @type {any} */ let hit = null;
+    let now = 1000 + DT * 1000;
+    for (let t = 0; t < 4000; t += DT * 1000) {
+      const h = df.step(DT, now).find((e) => e.kind === 'playerHit');
+      if (h) { hit = h; break; }
+      now += DT * 1000;
+    }
+    expect(hit).not.toBeNull();
+    expect(hit.victim).toBe(1);
+    expect(df.kills[0]).toBe(1);
+    expect(df.hits[0]).toBe(1);
+  });
+
+  it('非 PvP：玩家不被鎖定（維持幽靈穿透——只鎖氣球）', () => {
+    df.setPlayers([{ slot: 1, pos: { x: 0, y: 200, z: -100 }, alive: true }]); // 對手更近
+    isolateBalloon(df, { x: 0, y: 200, z: -300 });
+    df.balloons.forEach((b, i) => { if (i !== 0) b.alive = false; });
+    expect(df.updateLock(0, { pos: { x: 0, y: 200, z: 0 }, heading: 0 })).toBe('b0'); // 鎖氣球、不鎖玩家
+  });
+
+  it('命中率 hitRate = 命中/發射（不除零）', () => {
+    df.shots[0] = 4; df.hits[0] = 1;
+    expect(df.hitRate(0)).toBe(25);
+    df.shots[0] = 0; df.hits[0] = 0;
+    expect(df.hitRate(0)).toBe(0);
+  });
+
   it('setActive(false)：清空靶場與彈丸', () => {
     df.setActive(false);
     expect(df.balloons.length).toBe(0);

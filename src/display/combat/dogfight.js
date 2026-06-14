@@ -54,7 +54,15 @@ export class Dogfight {
     this.mags = Array.from({ length: MAX_SLOTS }, () => this._freshMags());
     /** @type {(string|null)[]} */
     this.lockId = Array.from({ length: MAX_SLOTS }, () => null);
-    this.score = Array.from({ length: MAX_SLOTS }, () => 0);
+    this.score = Array.from({ length: MAX_SLOTS }, () => 0); // 氣球/地面靶總分
+    this.kills = Array.from({ length: MAX_SLOTS }, () => 0); // PvP 擊落數
+    this.shots = Array.from({ length: MAX_SLOTS }, () => 0); // 發射數（命中率分母）
+    this.hits = Array.from({ length: MAX_SLOTS }, () => 0);  // 命中數（氣球/地面靶/玩家）
+
+    // PvP：dogfightMode==='pvp' 才開玩家互打；否則兩機幽靈穿透（不互鎖、不互傷）。
+    this.pvp = false;
+    /** @type {{slot:number, pos:{x:number,y:number,z:number}, alive:boolean}[]} 每幀由 main 餵入的可命中玩家 */
+    this.players = [];
 
     // 共用幾何/材質：卡通彈＝小亮球；擬真飛彈＝飛彈 voxel（HITL：要像飛彈）
     this._projGeo = new THREE.SphereGeometry(3, 8, 6);
@@ -84,13 +92,35 @@ export class Dogfight {
     if (on === this.active) return;
     this.active = on;
     if (on) {
-      this._spawnBalloons();
-      this._spawnGroundTarget();
-      for (let i = 0; i < MAX_SLOTS; i++) { this.weaponSel[i] = 0; this.mags[i] = this._freshMags(); this.score[i] = 0; this.lockId[i] = null; }
+      this._applyModeTargets();
+      for (let i = 0; i < MAX_SLOTS; i++) {
+        this.weaponSel[i] = 0; this.mags[i] = this._freshMags(); this.lockId[i] = null;
+        this.score[i] = 0; this.kills[i] = 0; this.shots[i] = 0; this.hits[i] = 0;
+      }
     } else {
       this._clear();
     }
   }
+
+  /** 設空戰子模式（balloons/pvp/…）。pvp＝玩家互打、清氣球；其餘＝氣球靶場。 @param {string} dogfightMode */
+  setMode(dogfightMode) {
+    this.pvp = dogfightMode === 'pvp';
+    if (this.active) this._applyModeTargets();
+  }
+
+  /** main 每幀餵入「可命中玩家」清單（重生無敵期間的玩家不在內）。 @param {{slot:number,pos:{x:number,y:number,z:number},alive:boolean}[]} players */
+  setPlayers(players) { this.players = Array.isArray(players) ? players : []; }
+
+  /** 依目前子模式佈置目標：pvp＝清氣球（打玩家）；否則＝氣球靶場 + 地面靶。 */
+  _applyModeTargets() {
+    this._clearBalloons();
+    if (this.pvp) { this.balloonTotal = 0; return; } // PvP：對手就是靶
+    this._spawnBalloons();
+    this._spawnGroundTarget();
+  }
+
+  /** 命中率（%，整數）。 @param {number} slot */
+  hitRate(slot) { return this.shots[slot] ? Math.round((this.hits[slot] / this.shots[slot]) * 100) : 0; }
 
   _spawnBalloons() {
     this._clearBalloons();
@@ -175,20 +205,30 @@ export class Dogfight {
   /** 回機場補滿三種彈匣。 @param {number} slot */
   reloadAll(slot) { for (const id of WEAPON_ORDER) reload(this.mags[slot][id]); }
 
-  /** @param {number} slot HUD：武器 + 彈藥 + 剩餘氣球 + 分數（HITL：要知道剩幾顆） */
+  /** @param {number} slot HUD：PvP＝擊落+命中率；氣球模式＝剩餘氣球+分數 */
   hudText(slot) {
     const spec = this.weaponSpec(slot);
     const mag = this.mags[slot][this.weaponId(slot)];
-    return `${spec.label} ${mag.ammo}/${mag.max}　🎈${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
+    const wpn = `${spec.label} ${mag.ammo}/${mag.max}`;
+    if (this.pvp) return `⚔️ 擊落 ${this.kills[slot]}　🎯 命中率 ${this.hitRate(slot)}%　${wpn}`;
+    return `${wpn}　🎈${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
   }
 
-  /** 存活氣球（給鎖定用）。 @returns {{id:string,pos:{x:number,y:number,z:number}}[]} */
-  _airTargets() {
+  /**
+   * 對空目標：PvP＝其他存活玩家（id 'p{slot}'）；否則＝存活氣球（id 'b{i}'）。
+   * @param {number} slot 自己的 slot（PvP 要排除自己）
+   * @returns {{id:string,pos:{x:number,y:number,z:number}}[]}
+   */
+  _airTargets(slot) {
+    if (this.pvp) {
+      return this.players.filter((p) => p.alive && p.slot !== slot).map((p) => ({ id: `p${p.slot}`, pos: p.pos }));
+    }
     return this.balloons.filter((b) => b.alive).map((b) => ({ id: b.id, pos: b.pos }));
   }
 
   /** @param {string} id @returns {{x:number,y:number,z:number}|null} */
   _targetPosOf(id) {
+    if (id[0] === 'p') { const p = this.players.find((x) => x.alive && `p${x.slot}` === id); return p ? p.pos : null; }
     const b = this.balloons.find((x) => x.id === id);
     return b && b.alive ? b.pos : null;
   }
@@ -197,14 +237,14 @@ export class Dogfight {
   targetPos(id) { return id ? this._targetPosOf(id) : null; }
 
   /**
-   * 每 slot 每幀：更新鎖定（對空＝最近氣球）。回傳 lockId（HUD 用）。
+   * 每 slot 每幀：更新鎖定（對空＝最近目標：PvP 對手 / 氣球）。回傳 lockId（HUD 用）。
    * @param {number} slot @param {{pos:{x:number,y:number,z:number}, heading:number}} plane
    * @returns {string|null}
    */
   updateLock(slot, plane) {
     const spec = this.weaponSpec(slot);
     this.lockId[slot] = spec.kind === 'air'
-      ? acquireAirLock({ pos: plane.pos, heading: plane.heading }, this._airTargets(), spec)
+      ? acquireAirLock({ pos: plane.pos, heading: plane.heading }, this._airTargets(slot), spec)
       : null;
     return this.lockId[slot];
   }
@@ -220,6 +260,7 @@ export class Dogfight {
     const mag = this.mags[slot][id];
     if (!canFire(mag, now)) return { fired: false };
     fire(mag, now);
+    this.shots[slot] += 1; // 命中率分母
     const shooter = { pos: plane.pos, heading: plane.heading };
     const targetId = spec.kind === 'air' ? this.lockId[slot] : null;
     const proj = spawnProjectile(shooter, spec, targetId);
@@ -245,9 +286,9 @@ export class Dogfight {
 
   /**
    * 推進一步：氣球漂移 + 彈丸前進 + 命中處理 + 整輪打完換新輪。回傳本步事件（caller 播音/計分）。
-   * 事件 kind：pop=氣球啵、boom=紅區地面靶命中、exempt=打到地標（红線無效）、miss=對地落空、cleared=整輪打完。
+   * 事件 kind：pop=氣球啵、boom=紅區地面靶命中、exempt=打到地標（红線無效）、miss=對地落空、cleared=整輪打完、playerHit=PvP 擊中對手。
    * @param {number} dt @param {number} now ms
-   * @returns {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared', owner:number, sound?:'cartoon'|'boom'}[]}
+   * @returns {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]}
    */
   step(dt, now) {
     if (!this.active) return [];
@@ -263,7 +304,7 @@ export class Dogfight {
       this.groundTarget.mesh.visible = true;
     }
 
-    /** @type {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared', owner:number, sound?:'cartoon'|'boom'}[]} */
+    /** @type {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]} */
     const events = [];
     const env = { targetPosOf: (/** @type {string} */ id) => this._targetPosOf(id), groundY: this.groundY };
 
@@ -276,10 +317,15 @@ export class Dogfight {
       if (res.result === 'flying') { survivors.push(p); continue; }
       if (res.result === 'hit') {
         const sound = p.proj.spec.sound;
-        if (p.proj.spec.kind === 'air' && res.targetId != null) {
+        if (p.proj.spec.kind === 'air' && typeof res.targetId === 'string' && res.targetId[0] === 'p') {
+          // PvP：命中對手玩家 → 擊落事件（後果軸由 main 套用到受擊方）
+          const victim = Number(res.targetId.slice(1));
+          this.kills[p.owner] += 1; this.hits[p.owner] += 1;
+          events.push({ kind: 'playerHit', owner: p.owner, victim, sound });
+        } else if (p.proj.spec.kind === 'air' && res.targetId != null) {
           // 對空命中氣球 → 啵（去暴力）；不個別重生
           const b = this.balloons.find((x) => x.id === res.targetId);
-          if (b && b.alive) { b.alive = false; b.mesh.visible = false; this.score[p.owner] += 1; events.push({ kind: 'pop', owner: p.owner, sound }); }
+          if (b && b.alive) { b.alive = false; b.mesh.visible = false; this.score[p.owner] += 1; this.hits[p.owner] += 1; events.push({ kind: 'pop', owner: p.owner, sound }); }
         } else {
           // 對地命中：红線豁免 —— 只有落在紅區內、且不在地標上才生效
           const point = { x: p.proj.pos.x, z: p.proj.pos.z };
@@ -288,7 +334,7 @@ export class Dogfight {
           if (ok && this.groundTarget && this.groundTarget.alive
               && Math.hypot(point.x - this.groundTarget.pos.x, point.z - this.groundTarget.pos.z) <= 80) {
             this.groundTarget.alive = false; this.groundTarget.mesh.visible = false;
-            this.groundTarget.respawnAt = now + GROUND_RESPAWN_MS; this.score[p.owner] += 1;
+            this.groundTarget.respawnAt = now + GROUND_RESPAWN_MS; this.score[p.owner] += 1; this.hits[p.owner] += 1;
             events.push({ kind: 'boom', owner: p.owner, sound });
           } else if (onLandmark) {
             events.push({ kind: 'exempt', owner: p.owner, sound }); // 红線：打到教育地標＝無效
