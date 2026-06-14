@@ -208,6 +208,29 @@ test('空戰子模式 1v1：選 🤖1v1 → spawn 一架敵機、清氣球', asy
   await ctx.close();
 });
 
+// v2.1-1：選競速 → 賽道標記（起點+航圈+終點）建出；切兩型（穿圈航線 4 圈 / 地標衝刺 1 終點）。
+test('競速：選競速 → 賽道標記建出、切穿圈/地標兩型', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#pmRow [data-pm="race"]');
+  await display.click('#raceRow [data-race="rings"]'); // 穿圈航線
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.gameMode)).toBe('race');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.raceType)).toBe('rings');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.raceMarkers.rings.length)).toBe(4); // 4 航圈
+  expect(await display.evaluate(() => !!/** @type {any} */ (window).__tp.raceMarkers.startMesh)).toBe(true); // 起點閘門
+  expect(await display.evaluate(() => !!/** @type {any} */ (window).__tp.race)).toBe(true);
+
+  await display.click('#raceRow [data-race="landmark"]'); // 地標衝刺
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.raceType)).toBe('landmark');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.raceMarkers.rings.length)).toBe(1); // 1 終點圈
+  await display.click('#modeMenuClose');
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

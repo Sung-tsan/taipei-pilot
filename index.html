@@ -139,6 +139,7 @@
     #modeMenu { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #0b0f18cc; }
     #modeMenu.hidden { display: none; }
     #dogfightSection.disabled { opacity: .4; pointer-events: none; }
+    #raceSection.disabled { opacity: .4; pointer-events: none; }
     #modeMenuClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); padding: 14px 0; border-radius: var(--r-md); font-size: 18px; font-weight: 800; }
 
     /* 任務卡方向箭頭（TaskSlot 內） */
@@ -291,6 +292,13 @@
           <button class="set-opt tactile" data-dm="pvp">⚔️ 對打</button>
           <button class="set-opt tactile" data-dm="ai_1v1">🤖 1v1</button>
           <button class="set-opt tactile" data-dm="ai_2v2">🤝 2v2</button>
+        </div>
+      </div>
+      <div class="set-section" id="raceSection">
+        <div class="set-label">怎麼比？<small>（競速模式）</small></div>
+        <div id="raceRow" class="set-row">
+          <button class="set-opt tactile" data-race="rings">🟡 穿圈航線<small>依序穿圈</small></button>
+          <button class="set-opt tactile" data-race="landmark">🟢 地標衝刺<small>衝到101</small></button>
         </div>
       </div>
       <div class="set-section">
