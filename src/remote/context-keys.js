@@ -19,6 +19,34 @@ export const FREE_FLIGHT_KEYS = /** @type {ContextKey[]} */ ([
   { id: 'land', label: '🛬 降落輔助', hint: '收油門＋放輪', action: 'landAssist' },
 ]);
 
+// —— V2 佔位 config（v2.0-1 先定資料；發射 btn 位元由 v2.0-2 加進 protocol，
+//    remote 端依模式換上這份鍵由 v2.0-5 接）——
+
+/** 空戰模式兩顆替換鍵：發射 + 換武器。btn/handler 由後階段補。 */
+export const DOGFIGHT_KEYS = /** @type {ContextKey[]} */ ([
+  { id: 'fire', label: '🔥 發射', hint: '飛近自動鎖定', action: 'fire' },
+  { id: 'weapon', label: '🎯 換武器', hint: '卡通/飛彈', action: 'weaponSwitch' },
+]);
+
+/** 競速模式兩顆替換鍵：衝刺 + 降落輔助。 */
+export const RACE_KEYS = /** @type {ContextKey[]} */ ([
+  { id: 'boost', label: '💨 衝刺', hint: '競速加速', action: 'boost' },
+  { id: 'land', label: '🛬 降落輔助', hint: '收油門＋放輪', action: 'landAssist' },
+]);
+
+/** mode → context 鍵 config（remote 換玩法時查此表，v2.0-5 接線）。 */
+export const KEYS_BY_MODE = {
+  free: FREE_FLIGHT_KEYS,
+  mission: FREE_FLIGHT_KEYS,
+  dogfight: DOGFIGHT_KEYS,
+  race: RACE_KEYS,
+};
+
+/** @param {string} mode @returns {ContextKey[]} 未知 mode → 退回自由飛鍵（不爆） */
+export function keysForMode(mode) {
+  return KEYS_BY_MODE[/** @type {keyof typeof KEYS_BY_MODE} */ (mode)] ?? FREE_FLIGHT_KEYS;
+}
+
 /**
  * 把 context 鍵掛進容器並接事件。
  * - 有 btn 的鍵＝momentary：按住期間其 bit 進輸入（放開/離開/取消即清）。

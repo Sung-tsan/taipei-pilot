@@ -16,7 +16,8 @@
 > **規劃進度（2026-06-13）**：V1→V5 北極星定稿；**v1.1 已拆 6 份 handoff**（`handoff/2026-06-13_v1.1-0~5_*.md`，design-HITL 已給過）；**V2 已拆 6 份 handoff**（`handoff/2026-06-13_v2.0-1~5 + v2.1-1`，待拍板已收斂）；**V3 已拆 4 份 handoff**（`handoff/2026-06-13_v3.0-1~4`，待拍板收斂）。
 >
 > **v1.1 實作進度（2026-06-13 Opus 開發 session）**：**v1.1-0~5 agent 實作全部完成並逐階段 commit**（typecheck 0 / 135 unit / 11 e2e 全綠；各階段 `handoff/*_DONE*.md` 回報）。6 槽位 HUD+remote 雙版+協定（0）／後果軸三檔+設定（1）／迫降系統（2）／任務四型+資料（3）／任務 UI+收集+大慶祝（4）／音效+回歸+DRAFT 清單（5）皆到位。
-> **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。
+> **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。**（已完成、已 tag `taipei-pilot-v1.1`）**
+> **v2.0 實作進度（2026-06-14 Opus 開發 session）**：**v2.0-1 玩法模式選單 + F-16 完成**（typecheck 0 / 156 unit / 15 e2e 全綠；`handoff/2026-06-14_v2.0-1_DONE.md` 回報）。玩法選單（free/mission/dogfight/race + 空戰子模式 + 機種）／HUD_MODES+context-keys 加 dogfight/race 佔位／F-16 voxel + **機型參數化 `plane-specs.js`（B1 機型版，T-34C 位元不變）**。**待 Sung 併 v2.0-5 雙真機 HITL**。下一步 v2.0-2 武器系統（GO/NO-GO）。
 
 ---
 

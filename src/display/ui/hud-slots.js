@@ -19,6 +19,11 @@ const MODE_SLOTS = {
   free: ['StatusSlot', 'ModeSlot', 'AltBand', 'HomeSlot'],
   // 任務模式（v1.1-4 接）：六槽全 eligible。
   mission: ['TaskSlot', 'StatusSlot', 'ModeSlot', 'CenterSlot', 'AltBand', 'HomeSlot'],
+  // 空戰模式（v2.0-1 佔位，內容由 v2.0-5 填）：鎖定框→CenterSlot、彈藥/冷卻→StatusSlot、
+  // 擊落數/命中率→TaskSlot（計分）、子模式標示→ModeSlot。六槽全 eligible。
+  dogfight: ['TaskSlot', 'StatusSlot', 'ModeSlot', 'CenterSlot', 'AltBand', 'HomeSlot'],
+  // 競速模式（v2.0-1 佔位，內容由 v2.1-1 填）：名次/計時→TaskSlot、名次 banner→CenterSlot。
+  race: ['TaskSlot', 'StatusSlot', 'ModeSlot', 'CenterSlot', 'AltBand', 'HomeSlot'],
 };
 
 /**
@@ -31,4 +36,4 @@ export function slotVisibility(mode) {
 }
 
 /** 已知 mode 清單（給 UI/測試列舉） */
-export const HUD_MODES = /** @type {const} */ (['free', 'mission']);
+export const HUD_MODES = /** @type {const} */ (['free', 'mission', 'dogfight', 'race']);

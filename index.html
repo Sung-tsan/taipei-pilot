@@ -132,6 +132,12 @@
     #limitSection.disabled { opacity: .4; pointer-events: none; }
     #settingsClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); padding: 14px 0; border-radius: var(--r-md); font-size: 18px; font-weight: 800; }
 
+    /* —— 玩法選單（V2：模式 + 空戰子模式 + 機種）—— */
+    #modeMenu { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #0b0f18cc; }
+    #modeMenu.hidden { display: none; }
+    #dogfightSection.disabled { opacity: .4; pointer-events: none; }
+    #modeMenuClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); padding: 14px 0; border-radius: var(--r-md); font-size: 18px; font-weight: 800; }
+
     /* 任務卡方向箭頭（TaskSlot 內） */
     .t-arrow { display: inline-block; font-size: 20px; line-height: 1; transition: transform .15s linear; }
 
@@ -238,6 +244,39 @@
         </div>
       </div>
       <button id="settingsClose" class="tactile">完成</button>
+    </div>
+  </div>
+
+  <!-- 玩法選單（V2：玩法模式 + 空戰子模式 + 機種）modal -->
+  <div id="modeMenu" class="hidden">
+    <div class="settings-card">
+      <h2>🎮 玩法</h2>
+      <div class="set-section">
+        <div class="set-label">玩什麼？</div>
+        <div id="pmRow" class="set-row">
+          <button class="set-opt tactile" data-pm="free">✈️ 自由飛<small>到處逛</small></button>
+          <button class="set-opt tactile" data-pm="mission">🎯 任務<small>找地標</small></button>
+          <button class="set-opt tactile" data-pm="dogfight">🔥 空戰<small>打靶/對戰</small></button>
+          <button class="set-opt tactile" data-pm="race">🏁 競速<small>比快</small></button>
+        </div>
+      </div>
+      <div class="set-section" id="dogfightSection">
+        <div class="set-label">空戰怎麼打？<small>（空戰模式）</small></div>
+        <div id="dmRow" class="set-row">
+          <button class="set-opt tactile" data-dm="balloons">🎈 氣球靶</button>
+          <button class="set-opt tactile" data-dm="pvp">⚔️ 對打</button>
+          <button class="set-opt tactile" data-dm="ai_1v1">🤖 1v1</button>
+          <button class="set-opt tactile" data-dm="ai_2v2">🤝 2v2</button>
+        </div>
+      </div>
+      <div class="set-section">
+        <div class="set-label">選飛機</div>
+        <div id="planeRow" class="set-row">
+          <button class="set-opt tactile" data-plane="t34c">🛩 T-34C<small>教練機</small></button>
+          <button class="set-opt tactile" data-plane="f16">🚀 F-16<small>噴射機</small></button>
+        </div>
+      </div>
+      <button id="modeMenuClose" class="tactile">完成</button>
     </div>
   </div>
 

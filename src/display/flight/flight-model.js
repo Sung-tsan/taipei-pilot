@@ -91,15 +91,17 @@ export function makeFlatEnv({ runwayHalfLength = 1400, runwayHalfWidth = 60, air
  * @param {Input} rawInput
  * @param {number} dt
  * @param {Env} env
+ * @param {typeof P} [params] 機型手感表（缺省＝T-34C 的 P；v2.0-1 起多機種照此疊覆寫，
+ *   省略時與 v1 逐位元一致＝純加法 + 中立預設）。
  */
-export function stepPlane(s, rawInput, dt, env) {
+export function stepPlane(s, rawInput, dt, env, params = P) {
   s.justTookOff = false;
   s.justLanded = false;
   s.justBounced = false;
   s.justNoGear = false;
   s.justForcedTouch = false;
   const input = s.autopilot === 'orbit'
-    ? { r: 0, p: 0, th: P.ORBIT_TH, gearUp: !s.gearDown } // bank 直接鎖定，gear 維持原狀
+    ? { r: 0, p: 0, th: params.ORBIT_TH, gearUp: !s.gearDown } // bank 直接鎖定，gear 維持原狀
     : rawInput;
 
   if (s.mode === 'parked') {
@@ -110,33 +112,33 @@ export function stepPlane(s, rawInput, dt, env) {
 
   if (s.mode === 'rolling') {
     s.gearDown = true;
-    stepRolling(s, input, dt, env);
+    stepRolling(s, input, dt, env, params);
     return;
   }
 
   s.gearDown = !input.gearUp; // 空中聽遙控器的（離地後「先前就按了收輪」自動生效）
-  stepFlying(s, input, dt, env);
+  stepFlying(s, input, dt, env, params);
 }
 
 /**
- * @param {PlaneState} s @param {Input} input @param {number} dt @param {Env} env
+ * @param {PlaneState} s @param {Input} input @param {number} dt @param {Env} env @param {typeof P} params
  */
-function stepRolling(s, input, dt, env) {
-  const target = input.th * P.GROUND_TOP;
-  const rate = target > s.speed ? P.GROUND_ACCEL : P.GROUND_DRAG;
+function stepRolling(s, input, dt, env, params) {
+  const target = input.th * params.GROUND_TOP;
+  const rate = target > s.speed ? params.GROUND_ACCEL : params.GROUND_DRAG;
   s.speed = approach(s.speed, target, rate, dt);
 
   // 地面轉向：低速才轉得動方向（不會原地打轉）
-  const steer = input.r * 0.4 * clamp(s.speed / P.V_ROTATE, 0, 1);
+  const steer = input.r * 0.4 * clamp(s.speed / params.V_ROTATE, 0, 1);
   s.heading = wrapAngle(s.heading + steer * dt);
-  s.bank = approach(s.bank, 0, P.BANK_RATE, dt);
-  s.pitch = approach(s.pitch, 0, P.PITCH_RATE, dt);
+  s.bank = approach(s.bank, 0, params.BANK_RATE, dt);
+  s.pitch = approach(s.pitch, 0, params.PITCH_RATE, dt);
 
   // 位移（貼地）
   moveForward(s, dt);
   s.pos.y = env.groundY(s.pos.x, s.pos.z);
 
-  if (s.speed >= P.V_ROTATE) {
+  if (s.speed >= params.V_ROTATE) {
     s.mode = 'flying';
     s.pitch = 0.12; // 自動離地，不需拉桿
     s.justTookOff = true;
@@ -147,43 +149,43 @@ function stepRolling(s, input, dt, env) {
 }
 
 /**
- * @param {PlaneState} s @param {Input} input @param {number} dt @param {Env} env
+ * @param {PlaneState} s @param {Input} input @param {number} dt @param {Env} env @param {typeof P} params
  */
-function stepFlying(s, input, dt, env) {
+function stepFlying(s, input, dt, env, params) {
   // 1. 速度：區間鎖定，永不失速；放起落架 = 阻力大，極速較低。
   // 收油門 → 一路減速到 vGlide（不再卡在巡航下限），但永遠不會更慢 → 不失速。
   // 襟翼（複雜版）：每段降低可飛下限 + 降低極速（升力/阻力）；flaps=0 → 與 v1 完全一致。
   const flaps = clamp(input.flaps ?? 0, 0, MAX_FLAPS);
-  const vGlide = P.V_GLIDE - flaps * P.FLAPS_GLIDE;
-  const vMax = (s.gearDown ? P.V_MAX_GEAR : P.V_MAX) - flaps * P.FLAPS_DRAG;
+  const vGlide = params.V_GLIDE - flaps * params.FLAPS_GLIDE;
+  const vMax = (s.gearDown ? params.V_MAX_GEAR : params.V_MAX) - flaps * params.FLAPS_DRAG;
   const vTarget = lerp(vGlide, vMax, clamp(input.th, 0, 1));
-  s.speed = approach(s.speed, vTarget, P.ACCEL, dt);
-  s.speed = clamp(s.speed, vGlide, P.V_MAX);
+  s.speed = approach(s.speed, vTarget, params.ACCEL, dt);
+  s.speed = clamp(s.speed, vGlide, params.V_MAX);
 
   // 2. 滾轉：死區內 = 放手自動回平
-  let bankTarget = clamp(input.r, -1, 1) * P.MAX_BANK;
-  if (s.autopilot === 'orbit') bankTarget = P.ORBIT_BANK;
+  let bankTarget = clamp(input.r, -1, 1) * params.MAX_BANK;
+  if (s.autopilot === 'orbit') bankTarget = params.ORBIT_BANK;
 
   // 3. 俯仰目標（複雜版配平：trim 疊進升降舵當持續偏置；trim=0 → 與 v1 完全一致）
-  const pIn = clamp(clamp(input.p, -1, 1) + (input.trim ?? 0) * P.TRIM_AUTH, -1, 1);
-  let pitchTarget = pIn * P.MAX_PITCH;
+  const pIn = clamp(clamp(input.p, -1, 1) + (input.trim ?? 0) * params.TRIM_AUTH, -1, 1);
+  let pitchTarget = pIn * params.MAX_PITCH;
 
   // 收油門 → 自然下滑（能量耦合的街機版）：油門低於 IDLE_TH 時，
   // 「放手回平」的目標俯仰漸變為輕微下垂 → 飛機像滑翔一樣慢慢降。
   // 玩家推/拉桿（|p| 大）時讓位給玩家；低空保護在後面仍會蓋過。
-  const idleW = clamp((P.IDLE_TH - input.th) / P.IDLE_TH, 0, 1);
+  const idleW = clamp((params.IDLE_TH - input.th) / params.IDLE_TH, 0, 1);
   if (idleW > 0) {
     const handsOff = 1 - Math.abs(clamp(input.p, -1, 1));
-    pitchTarget += idleW * handsOff * P.GLIDE_PITCH;
+    pitchTarget += idleW * handsOff * params.GLIDE_PITCH;
   }
 
   const agl = s.pos.y - env.groundY(s.pos.x, s.pos.z);
 
   // 爬升輔助：低空 + 油門夠 → 自動帶機頭上（起飛「推油門就上天」；
   // 降落進場油門收小 → 不觸發，照常下滑）
-  if (input.th > 0.4 && agl < P.CLIMB_ASSIST_AGL) {
-    const assist = clamp((P.CLIMB_ASSIST_AGL - agl) / P.CLIMB_ASSIST_AGL, 0, 1);
-    pitchTarget = Math.max(pitchTarget, assist * P.CLIMB_ASSIST_PITCH);
+  if (input.th > 0.4 && agl < params.CLIMB_ASSIST_AGL) {
+    const assist = clamp((params.CLIMB_ASSIST_AGL - agl) / params.CLIMB_ASSIST_AGL, 0, 1);
+    pitchTarget = Math.max(pitchTarget, assist * params.CLIMB_ASSIST_PITCH);
   }
 
   // 低空柔性拉起（機場區除外 —— 不然永遠降不了落）。
@@ -191,32 +193,32 @@ function stepFlying(s, input, dt, env) {
   // 會把整個機場區外的「機頭向下」全部清掉（2026-06-12 修：俯衝失靈主因）。
   // landAnywhere（真實模式）：關閉這道拉起，讓玩家能降到機場外地面迫降。
   if (!env.inLowFlyZone(s.pos.x, s.pos.z) && !input.landAnywhere) {
-    const urgency = clamp((P.FLOOR_ZONE - agl) / (P.FLOOR_ZONE - P.FLOOR_AGL), 0, 1);
-    if (urgency > 0) pitchTarget = Math.max(pitchTarget, urgency * P.MAX_PITCH);
+    const urgency = clamp((params.FLOOR_ZONE - agl) / (params.FLOOR_ZONE - params.FLOOR_AGL), 0, 1);
+    if (urgency > 0) pitchTarget = Math.max(pitchTarget, urgency * params.MAX_PITCH);
   }
   // 雲頂：柔性壓回
-  const ceilUrgency = clamp((s.pos.y - (P.CLIMB_CEIL - 60)) / 60, 0, 1);
-  pitchTarget = Math.min(pitchTarget, lerp(P.MAX_PITCH, -0.1, ceilUrgency));
+  const ceilUrgency = clamp((s.pos.y - (params.CLIMB_CEIL - 60)) / 60, 0, 1);
+  pitchTarget = Math.min(pitchTarget, lerp(params.MAX_PITCH, -0.1, ceilUrgency));
 
   // 邊界柔性轉回：超出 SOFT 後把 bank 漸進覆寫成「轉向圓心」
   const r = Math.hypot(s.pos.x, s.pos.z);
-  if (r > P.BOUNDARY_SOFT) {
-    const w = clamp((r - P.BOUNDARY_SOFT) / (P.BOUNDARY_R - P.BOUNDARY_SOFT), 0, 1);
+  if (r > params.BOUNDARY_SOFT) {
+    const w = clamp((r - params.BOUNDARY_SOFT) / (params.BOUNDARY_R - params.BOUNDARY_SOFT), 0, 1);
     const headingToCenter = Math.atan2(-s.pos.x, s.pos.z);
     const turnDir = Math.sign(angDiff(s.heading, headingToCenter) || 1);
-    bankTarget = lerp(bankTarget, turnDir * P.MAX_BANK, w);
+    bankTarget = lerp(bankTarget, turnDir * params.MAX_BANK, w);
   }
 
-  s.bank = approach(s.bank, bankTarget, P.BANK_RATE, dt);
-  s.pitch = approach(s.pitch, pitchTarget, P.PITCH_RATE, dt);
+  s.bank = approach(s.bank, bankTarget, params.BANK_RATE, dt);
+  s.pitch = approach(s.pitch, pitchTarget, params.PITCH_RATE, dt);
 
   // 4. 自動協調轉彎
-  const headingRate = Math.tan(s.bank) * P.TURN_G / Math.max(s.speed, 30);
+  const headingRate = Math.tan(s.bank) * params.TURN_G / Math.max(s.speed, 30);
   s.heading = wrapAngle(s.heading + headingRate * dt);
 
   // 方向舵（複雜版）：直接 yaw，疊在協調轉彎上（接 V3 側風 crab）。rudder=0 → 不影響。
   const rudder = clamp(input.rudder ?? 0, -1, 1);
-  if (rudder) s.heading = wrapAngle(s.heading + rudder * P.RUDDER_YAW * dt);
+  if (rudder) s.heading = wrapAngle(s.heading + rudder * params.RUDDER_YAW * dt);
 
   // 5. 位移
   const prevY = s.pos.y;
@@ -227,7 +229,7 @@ function stepFlying(s, input, dt, env) {
   if (s.pos.y <= groundY + 1.5 && s.pos.y <= prevY) {
     const sinkRate = (prevY - s.pos.y) / dt;
     s.lastSink = sinkRate; // 迫降品質判定用
-    const gentle = sinkRate < P.LAND_MAX_SINK && Math.abs(s.bank) < P.LAND_MAX_BANK;
+    const gentle = sinkRate < params.LAND_MAX_SINK && Math.abs(s.bank) < params.LAND_MAX_BANK;
     const onRunway = env.canLandHere(s.pos.x, s.pos.z);
     if (gentle && onRunway && !s.gearDown) {
       // 輪子沒放 → 不准落地，柔彈 + 提醒
@@ -252,7 +254,7 @@ function stepFlying(s, input, dt, env) {
       // 柔彈：不墜毀、不懲罰，往上托
       s.pos.y = groundY + 1.5;
       s.pitch = Math.max(s.pitch, 0.18);
-      s.speed = Math.max(s.speed * 0.85, P.V_MIN);
+      s.speed = Math.max(s.speed * 0.85, params.V_MIN);
       s.justBounced = true;
     }
   }

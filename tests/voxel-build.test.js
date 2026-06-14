@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { buildVoxelGeometry } from '../src/voxel/build.js';
 import { t34cBody, t34cProp } from '../src/voxel/models/t34c.js';
+import { f16Body, f16Gear } from '../src/voxel/models/f16.js';
 
 describe('buildVoxelGeometry', () => {
   it('box 數 × 24 頂點 merge 正確、含 vertex colors', () => {
@@ -39,5 +40,30 @@ describe('buildVoxelGeometry', () => {
   it('螺旋槳是獨立小模型', () => {
     const g = buildVoxelGeometry(t34cProp);
     expect(g.attributes.position.count).toBe(t34cProp.boxes.length * 24);
+  });
+});
+
+describe('F-16 voxel 模型', () => {
+  it('建得起來、含 vertex colors、左右對稱、尺寸近似真機收斂', () => {
+    const g = buildVoxelGeometry(f16Body, { A: '#e0533d' });
+    expect(g.attributes.color.count).toBe(g.attributes.position.count);
+    g.computeBoundingBox();
+    const bb = /** @type {THREE.Box3} */ (g.boundingBox);
+    expect(bb.max.x - bb.min.x).toBeGreaterThan(9);    // 翼展 ~10m
+    expect(bb.max.x - bb.min.x).toBeLessThan(11);
+    expect(bb.max.z - bb.min.z).toBeGreaterThan(10);   // 機長 ~11.6m
+    expect(bb.max.z - bb.min.z).toBeLessThan(15);
+    expect(bb.min.y).toBeGreaterThanOrEqual(-0.01);    // 不穿地
+    expect(Math.abs(bb.min.x + bb.max.x)).toBeLessThan(0.5); // 左右對稱
+  });
+
+  it('沒有螺旋槳鍵（噴射機）—— prop 不在 body 內', () => {
+    // F-16 模型不提供 prop 模型；body palette 不含 'P' 槳葉色
+    expect(/** @type {any} */ (f16Body.palette).P).toBeUndefined();
+  });
+
+  it('起落架是獨立可建模型', () => {
+    const g = buildVoxelGeometry(f16Gear);
+    expect(g.attributes.position.count).toBe(f16Gear.boxes.length * 24);
   });
 });

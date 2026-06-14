@@ -9,13 +9,14 @@ import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
+import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
 import { ChaseCam } from './render/chase-cam.js';
 import { LandmarkLabels } from './render/labels.js';
 import { ViewportRenderer } from './render/viewports.js';
 import { Hud } from './ui/hud.js';
 import { GameAudio } from './audio.js';
 import { makeConsequence, registerMishap } from './flight/consequence.js';
-import { judgeForcedLanding, roadClearLength, roadLandable, TERRAIN, T34C_DIMS } from './flight/forced-landing.js';
+import { judgeForcedLanding, roadClearLength, roadLandable, TERRAIN } from './flight/forced-landing.js';
 import { ROAD_WIDTH } from './scene/city-gen.js';
 import { RIVERS } from './scene/rivers.js';
 import { MissionRunner } from './missions/mission-runner.js';
@@ -70,7 +71,9 @@ const runner = new MissionRunner(MAX_SLOTS, {
   riverRings: (name, count) => { const r = riverByName.get(name); return r ? ringsAlongRiver(r.points, count) : []; },
   collection,
 });
-let playMode = 'mission'; // v1.1-4 預設任務模式以呈現新 UI；v1.1-5 出正式玩法選單
+let playMode = 'mission'; // free / mission / dogfight / race（v2.0-1 起四模式，選單見下）
+let dogfightMode = 'balloons'; // 空戰子模式 balloons/pvp/ai_1v1/ai_2v2（v2.0-1 佔位，內容後階段填）
+let planeId = DEFAULT_PLANE;    // 目前機種（v2.0-1：T-34C / F-16 可選；v1.2 接時數+里程碑解鎖）
 let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
@@ -192,20 +195,53 @@ for (const b of document.querySelectorAll('#limitRow .set-opt')) {
 }
 renderSettingsUI();
 
-// —— 玩法模式切換（v1.1-4 暫用按鈕；v1.1-5 出正式選單）——
+// —— 玩法選單（v2.0-1）：玩法模式 + 空戰子模式 + 機種 ——
+// 模式框架不重建——選單只切 playMode/dogfightMode/planeId 三個 seam；空戰/競速的武器/靶/賽道
+// 內容由 v2.0-2~5 / v2.1-1 填。HUD 槽位契約見 hud-slots.js（dogfight/race 已加 eligible）。
+const PM_LABELS = { free: '✈️ 自由飛', mission: '🎯 任務', dogfight: '🔥 空戰', race: '🏁 競速' };
 const playModeBtn = $('playModeBtn');
-function renderPlayMode() { playModeBtn.textContent = playMode === 'mission' ? '🎯 任務模式' : '✈️ 自由飛'; }
-playModeBtn.addEventListener('click', () => {
-  playMode = playMode === 'mission' ? 'free' : 'mission';
-  renderPlayMode();
+const modeMenuEl = $('modeMenu');
+
+function renderModeBtn() { playModeBtn.textContent = PM_LABELS[/** @type {keyof typeof PM_LABELS} */ (playMode)] ?? '🎮 玩法'; }
+function renderModeMenuUI() {
+  for (const b of document.querySelectorAll('#pmRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-pm') === playMode);
+  for (const b of document.querySelectorAll('#dmRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-dm') === dogfightMode);
+  for (const b of document.querySelectorAll('#planeRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-plane') === planeId);
+  $('dogfightSection').classList.toggle('disabled', playMode !== 'dogfight'); // 子模式僅空戰可選
+}
+
+/** 套用玩法模式到所有在線 slot（切 HUD 契約 + 任務啟停 + 提示） @param {string} mode */
+function applyPlayMode(mode) {
+  playMode = mode;
+  renderModeBtn();
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
     hud.applyMode(i, playMode);
     if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
     else hud.setTask(i, '');
+    if (playMode === 'dogfight') toast(i, '🔥 空戰模式（武器即將推出）');
+    else if (playMode === 'race') toast(i, '🏁 競速模式（賽道即將推出）');
   }
-});
-renderPlayMode();
+}
+
+/** 換機種：重建所有 plane voxel（保留 slot 色/收放狀態）。HUD 機種名每 frame 自動更新。 @param {string} id */
+function setPlane(id) {
+  planeId = PLANE_IDS.includes(/** @type {any} */ (id)) ? id : DEFAULT_PLANE;
+  planes.forEach((p) => p.setModel(planeSpec(planeId).model));
+}
+
+playModeBtn.addEventListener('click', () => { renderModeMenuUI(); modeMenuEl.classList.remove('hidden'); });
+$('modeMenuClose').addEventListener('click', () => modeMenuEl.classList.add('hidden'));
+for (const b of document.querySelectorAll('#pmRow .set-opt')) {
+  b.addEventListener('click', () => { const m = b.getAttribute('data-pm'); if (m) { applyPlayMode(m); renderModeMenuUI(); } });
+}
+for (const b of document.querySelectorAll('#dmRow .set-opt')) {
+  b.addEventListener('click', () => { const m = b.getAttribute('data-dm'); if (m) { dogfightMode = m; renderModeMenuUI(); } });
+}
+for (const b of document.querySelectorAll('#planeRow .set-opt')) {
+  b.addEventListener('click', () => { const p = b.getAttribute('data-plane'); if (p) { setPlane(p); renderModeMenuUI(); } });
+}
+renderModeBtn();
 
 // —— 收集簿（點亮地標 + 完成任務；雙人共享）——
 const collectionEl = $('collection');
@@ -313,7 +349,7 @@ function handleForcedLanding(i, now) {
       roadClearLength(sample, s.pos.x, s.pos.z, 'x'),
       roadClearLength(sample, s.pos.x, s.pos.z, 'z'),
     );
-    roadOk = roadLandable(ROAD_WIDTH, len, T34C_DIMS);
+    roadOk = roadLandable(ROAD_WIDTH, len, planeSpec(planeId).dims); // 機型迫降諸元（翼展/最短直段）
   }
   const result = judgeForcedLanding({ terrain, speed: s.speed, sinkRate: s.lastSink, bank: s.bank, roadOk });
   net.sendFx(i, 'bump'); // 遙控器 haptic
@@ -393,7 +429,7 @@ function loop(/** @type {number} */ now) {
       input.landAnywhere = conseq[i].mode === 'real'; // 真實模式：機場外可迫降
       lastInputs[i] = input;
       const prev = { ...states[i].pos };
-      stepPlane(states[i], input, DT, env);
+      stepPlane(states[i], input, DT, env, flightParams(planeId)); // 機型手感（T-34C 缺省＝位元不變）
       if (states[i].justForcedTouch) { handleForcedLanding(i, now); continue; }
       const hit = collidePlane(states[i], prev, taipei.solidAt);
       if ((hit || states[i].justBounced) && now > fxCooldown[i]) {
@@ -440,7 +476,7 @@ function loop(/** @type {number} */ now) {
     }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
-      hud.setMode(i, '🛩 T-34C');
+      hud.setMode(i, planeSpec(planeId).name);
       hud.setAlt(i, `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`);
     } else {
       hud.setMode(i, '🛫 推滿油門起飛！');
@@ -483,6 +519,14 @@ requestAnimationFrame(loop);
 /** @type {any} */ (window).__tp = {
   net, states, conseq, settings, lastForcedLanding, runner, collection,
   get playMode() { return playMode; },
+  // v2.0-1：玩法選單 + 機種（e2e/dev 直接驅動，不必點選單）
+  get gameMode() { return playMode; },
+  get dogfightMode() { return dogfightMode; },
+  get planeId() { return planeId; },
+  setPlayMode: (/** @type {string} */ m) => applyPlayMode(m),
+  setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
+  setPlane: (/** @type {string} */ id) => setPlane(id),
+  flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),
   terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
   // e2e/dev：直接完成當前任務（略過飛到定點），驗任務迴圈 + 收集 + 慶祝
   completeMission: (/** @type {number} */ slot) => {
