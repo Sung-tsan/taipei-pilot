@@ -309,6 +309,7 @@
 - 每個非顯而易見的決定寫進本檔 §7 拍板紀錄，附「為何」。
 - UI 起跑線＝`../spec/DESIGN_CRAFT_GUIDE.md`（TactilePress + 多層表面 + haptic 政策）。
 - **素材優先於手刻 ＋ 共存正規化（2026-06-14，見 §11）**：新增 3D 模型前先判類——bespoke 台灣識別件（地標）手刻 voxel（Claude 自足，不需 Blender）；通用件（機種／車／航廈／設備／靶／樹）預設採 CC0 low-poly 現成。**禁止無理由反射性手刻通用模型**（Claude 最燒 loading 的事）；手刻通用件須在 handoff 明示理由（如 trivial 小件比找素材便宜）。**匯入 GLB 一律過正規化**：剝貼圖→flat/Lambert＋重映本款色票＋挑低細節對齊 voxel，否則會打架。既有 voxel 全保留、不遷移；CC0 來源記 attribution（免標也建議列）。
+- **套件先行（不只模型，整個 3D 系統，2026-06-14 Sung 拍）**：**任何 3D 工作開動前先問「有沒有現成套件/資產？」，預設用套件、不要反射性 raw THREE 自幹。** 模型→CC0 GLB（`GLTFLoader`）；天空→`three/addons` Sky；霧→內建 `Fog`；雨雪/粒子/特效（含爆炸煙）→粒子套件或 instanced sprite；水→`three/addons` Water；載入/最佳化→three 官方 addon（DRACO/instancing）。**單一 primitive（torus/box/sphere）自幹 OK；成系統的 3D（模型庫/粒子/天氣/地形）一律先 survey 1–2 個套件（授權 CC0/MIT 才用），handoff 寫「為何選套件 X 或為何只能自幹」。** V2 既有 raw-THREE 手做件（voxel 機型/賽道圈/彈丸）已上線不回頭churn；規則對 V3+（天氣最吃）與新資產生效。
 
 ---
 
