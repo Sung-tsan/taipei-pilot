@@ -18,6 +18,8 @@
 > **v1.1 實作進度（2026-06-13 Opus 開發 session）**：**v1.1-0~5 agent 實作全部完成並逐階段 commit**（typecheck 0 / 135 unit / 11 e2e 全綠；各階段 `handoff/*_DONE*.md` 回報）。6 槽位 HUD+remote 雙版+協定（0）／後果軸三檔+設定（1）／迫降系統（2）／任務四型+資料（3）／任務 UI+收集+大慶祝（4）／音效+回歸+DRAFT 清單（5）皆到位。
 > **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。**（已完成、已 tag `taipei-pilot-v1.1`）**
 > **v2.0 實作進度（2026-06-14 Opus 開發 session）**：**v2.0-1 玩法模式選單 + F-16 完成**（typecheck 0 / 156 unit / 15 e2e 全綠；`handoff/2026-06-14_v2.0-1_DONE.md` 回報）。玩法選單（free/mission/dogfight/race + 空戰子模式 + 機種）／HUD_MODES+context-keys 加 dogfight/race 佔位／F-16 voxel + **機型參數化 `plane-specs.js`（B1 機型版，T-34C 位元不變）**。**待 Sung 併 v2.0-5 雙真機 HITL**。下一步 v2.0-2 武器系統（GO/NO-GO）。
+>
+> **美術方向 pivot（2026-06-14，技術評估 session，Sung × Opus）**：A/B 決策＝**B（low-poly 取代 voxel）**。通用件改走 CC0 現成素材、台灣地標保留手刻；**遷移邊界＝V4**（V2/V3 續用現有 voxel 不回頭）。詳見 §11、拍板 §7、gate §9、flag §8。**本次只改 canon＋立 gate，不動 V2/V3 code。**
 
 ---
 
@@ -54,7 +56,7 @@
 
 飛機從「玩具」一路長成「真的航空器」，遊戲也從 arcade 漸變成 light sim。這條弧是 V1→V5 的脊椎。
 
-**Tone ladder（同一條弧的調性版）**：**voxel 玩具視覺恆定**，但程序與音效的擬真度隨機種往上爬——教練機卡通（卡通飛彈、可愛聲）→ 噴射戰鬥機擬真（空對空/地飛彈、擬真爆炸）→ 民航機仿真（真實 ATC phraseology、滑行程序）。「調性跟著飛機長大」。
+**Tone ladder（同一條弧的調性版）**：**low-poly 玩具視覺恆定**（2026-06-14 pivot，voxel→low-poly，見 §11；voxel 為 V1–V3 過渡基底），但程序與音效的擬真度隨機種往上爬——教練機卡通（卡通飛彈、可愛聲）→ 噴射戰鬥機擬真（空對空/地飛彈、擬真爆炸）→ 民航機仿真（真實 ATC phraseology、滑行程序）。「調性跟著飛機長大」。
 
 ---
 
@@ -147,7 +149,7 @@
 
 - **新系統**：滑行道網路（airspace.json：節點/邊 + gate + 跑道出口 + 等待點）+ 地面導航（跟我車 + 綠色中線燈 + 塔台文字，air 回家箭頭的地面版）+ pushback 自動引導 + 地面碰撞（接後果軸）+ 停妥判定（地面版落地判定 + Settle）。
 - **民航機飛行模型差異**：重、轉彎慢、起飛滑行長、襟翼/起落架分段——「離島短場 × ATR × 霧/側風」＝**機種 × 機場 × 天氣三軸交會的招牌大魔王**。
-- **調性**：voxel 玩具視覺恆定，但程序/音效擬真度隨機種爬升（民航機＝仿真 ATC，boarding 仍可愛）。
+- **調性**：low-poly 玩具視覺恆定（V4＝low-poly 全面啟用點，見 §11），程序/音效擬真度隨機種爬升（民航機＝仿真 ATC，boarding 仍可愛）。
 
 ### V5 — 航網（九機場 + A→B + 真 ATC；決策已鎖 2026-06-13）
 
@@ -213,7 +215,7 @@
 - 每機種油量參數（油箱容量＋耗油率→航程）；**v1.2 隨 roster 先參數化、V5 航班 fuel planning 才變 gameplay**（同天氣：早參數化、晚啟用）。
 - **航程 gates 航網**：教練機飛不到最遠離島；飛松山→馬祖南竿要解鎖大航程機 →「機種解鎖」與「航網解鎖」綁成一條進度線。
 - **接後果軸 ＋ 接回 v1.1 迫降**：安全＝油量寬鬆/無限；真實＝會用完→油低警告→**油盡迫降（機場外水上/馬路）**。油量(V5) × 迫降(v1.1) × 真實模式 串成系統閉環。
-- **調性**：voxel 玩具視覺恆定；引擎聲/擬真度隨機種爬升（教練卡通→戰鬥擬真→民航仿真）。
+- **調性**：low-poly 玩具視覺恆定（見 §11）；引擎聲/擬真度隨機種爬升（教練卡通→戰鬥擬真→民航仿真）。
 
 ---
 
@@ -231,7 +233,7 @@
   | V4 | 塔台聲（嗶+短語音）、地面車輛/pushback/登機廣播/滑行胎/空橋 |
   | V5 | 塔台語音生成（grounded TTS）、各機場環境底噪差異 |
 
-  架構：①連續/反應式走參數化合成（引擎隨轉速、風隨側風），one-shot 走短取樣 clip（hybrid）②塔台 V4 短語音 clip → V5 生成 TTS（**仿真 phraseology**，grounded+逾時 fallback）③positional audio 留 polish ④**音效個性＝隨 tone ladder 分級，不是一律卡通**：卡通飛彈/低齡走可愛「噗咻」、空對空/空對地飛彈走擬真爆炸、塔台走仿真——voxel 視覺恆定、音效擬真度隨機種爬升；建議比照 DESIGN_CRAFT_GUIDE 立「音效個性指南」明訂這條光譜。
+  架構：①連續/反應式走參數化合成（引擎隨轉速、風隨側風），one-shot 走短取樣 clip（hybrid）②塔台 V4 短語音 clip → V5 生成 TTS（**仿真 phraseology**，grounded+逾時 fallback）③positional audio 留 polish ④**音效個性＝隨 tone ladder 分級，不是一律卡通**：卡通飛彈/低齡走可愛「噗咻」、空對空/空對地飛彈走擬真爆炸、塔台走仿真——low-poly 視覺恆定（見 §11）、音效擬真度隨機種爬升；建議比照 DESIGN_CRAFT_GUIDE 立「音效個性指南」明訂這條光譜。
 - **Later / Spike**：塔台語音生成（→ V5 真 ATC）、公開部署 onboarding（束 D，雙裝置 LAN relay 對陌生人的部署門檻）。
 
 ---
@@ -267,6 +269,8 @@
 | 2026-06-13 | V2 待拍板收斂：空戰子模式＝氣球靶(固定/活動)/PvP對打/敵機1v1·2v2；空對地＝現實地圖紅區(非地標、不隔離、地標豁免)；PvP 計分＝擊落數+命中率(safe/gentle冒煙重生·real出局)；補彈＝冷卻+回機場；F-16 沿用 v1.2；競爭兩型都做、名次＝完成時間 | Sung 拍 |
 | 2026-06-13 | V3 待拍板收斂：**threshold→受損要算受損百分比**（側風偏移/速度超標、亂流甩出包絡→%累加；把 v1.1-1 離散 damage 擴成連續 damagePct，smoking/destroyed 由 % 派生）／天氣挑戰任務＝現有任務型+天氣條件(不新增型)／日夜純氛圍不懲罰(除非配霧)／生活感清單確認／**V3 天氣範圍=台北(松山)**，weatherProfile schema 支援 9 機場但值 DRAFT，島嶼招牌天氣 V5 活化 | Sung 拍 |
 | 2026-06-13 | V3 已拆 4 份 handoff（v3.0-1 天氣引擎／v3.0-2 側風亂流+受損%(GO/NO-GO 暈感)／v3.0-3 生活感+日夜(GO/NO-GO perf)／v3.0-4 天氣任務+音效+整合）；前置＝v1.1(後果軸/任務框架，已實作完) | 同一套節奏拆解 |
+| 2026-06-14 | **美術 pivot：low-poly 取代 voxel（A/B 決策＝B）**；通用件走 CC0 現成、地標保留手刻；遷移邊界＝V4（V2/V3 續用 voxel 不回頭）。詳見 §11。**取代上方 2026-06-13「voxel 玩具視覺恆定」原則** | 手寫 voxel 座標＝Claude 最弱、最燒 loading＋最需 HITL 微調的環節（f16.js box×24 手調即一例）；low-poly CC0 生態池深 5–10 倍，V4/V5 通用件愈多省愈多；**越前期鎖方向、後期遷移愈便宜**（複利） |
+| 2026-06-14 | 立 workflow gate「素材優先於手刻」（§9）；bespoke 地標需另立 low-poly 建模管線（Blender／外包／text-to-3D），列 §8 flag、V4 前解 | 止血反射性手刻、把「畫圖」成本移出 Claude；地標 CC0 無現成＋辨識度＝靈魂，是 B 唯一真罩門 |
 
 ---
 
@@ -279,6 +283,8 @@
 | 滑行道網路 | airspace.json 怎麼描述滑行道圖/gate；pushback 倒退引導怎麼操作（6 歲友善） | V4 |
 | A→B 全圖抽象 | 跨海 300km 不可實渲染 → 台灣全圖 + 時間壓縮 + 近場 zoom；同時當地理學習地圖 | V5 |
 | 塔台語音生成 | grounded ATC voice：server API + grounded 三件套 + 逾時 fallback 文字 | V5 |
+| 美術 pivot 遷移 | voxel→low-poly：既有機體/城市於 V4 邊界 re-skin；鎖**單一 CC0 家族** ＋ 一個 GLB spike 定 scale/朝向標準再鋪開 | V4 |
+| 地標 low-poly 管線 | bespoke 台灣地標 CC0 無現成、Claude 不會建模 → Blender／外包／2026 下半 text-to-3D spike（B 唯一罩門） | V4 前 |
 | 公開部署 | 雙裝置 LAN relay 對陌生爸爸的部署門檻（束 D） | Later |
 
 ---
@@ -294,6 +300,7 @@
 - HITL 手感閘不可 proxy（鐵律 2）：真機/雙真機由 Sung 親驗，agent 不代簽。
 - 每個非顯而易見的決定寫進本檔 §7 拍板紀錄，附「為何」。
 - UI 起跑線＝`../spec/DESIGN_CRAFT_GUIDE.md`（TactilePress + 多層表面 + haptic 政策）。
+- **素材優先於手刻（2026-06-14 pivot，見 §11）**：新增任何 3D 模型前先判類——bespoke 台灣識別件（地標）手刻；通用件（機種／車／航廈／設備／靶／樹）預設採 CC0 low-poly 現成。手刻通用件須在 handoff **明示理由**（trivial 到找素材更貴／或 V2–V3 期間維持 voxel 一致性並列 V4 re-skin）。**禁止無理由反射性手刻通用模型**——那是 Claude 最燒 loading 的事。CC0 來源須記 attribution（即使 CC0 免標也建議列）。
 
 ---
 
@@ -301,4 +308,32 @@
 
 - **零依賴 kids_arcade**：獨立 web 專案，不碰 Flutter app 的 SQLite migration 鏈。
 - 沿用設計資產：DESIGN_CRAFT_GUIDE 的 Tactile 精神（web 重做）、玩具櫃色票家族、小司機的 ❤️ 旋鈕/溫和重試/教學瞬間/milestone 大慶祝/內容包管線思維。
-- 新依賴：Three.js、ws、qrcode、vite、vitest、Playwright。
+- 新依賴：Three.js、ws、qrcode、vite、vitest、Playwright（V4 起加 three 內建 `GLTFLoader`/`DRACOLoader` 載 CC0 low-poly GLB，見 §11；與現有 `voxel/build.js` 可並存）。
+
+---
+
+## 11. 美術／素材管線 — low-poly pivot（2026-06-14 拍定）
+
+> **本節取代 §7 之前「voxel 玩具視覺恆定」原則**，是 V1→V5 美術方向與 Claude loading 紀律的**單一真相源**；每個新增 3D 內容的 handoff 引用本節。
+> **緣起**：技術評估（Sung × Opus，2026-06-14）。論壇工法「不讓 AI 硬畫、改用免費 3D 模組」對照本款現況——本款早已是 Three.js 3D，但美術是**手寫 voxel 方塊座標**（`t34c.js`/`f16.js`/`landmarks.js`），而手寫座標正是 Claude 最弱、最燒 loading＋最需 HITL 微調的環節（`f16.js` box×24 手調即一例）。後面 ATR-72／B737／A330 ＋ V4 地勤車 ＋ V5 九機場全排隊手刻＝loading 黑洞。
+
+### 11.1 方向（A/B 決策＝B）
+- **基底視覺：low-poly（取代 voxel）**——玩具質感不變，由方塊改為低多邊形。
+- **通用內容一律 CC0 現成、不手刻**：機種、地勤車、航廈、機場設備、靶／敵機／泡泡、樹木、建築變化。
+- **素材源**（CC0 優先，**鎖單一家族**避免風格打架）：Kenney.nl、Quaternius、Poly Pizza、Sketchfab（CC0 filter）。
+- **技術**：Three.js `GLTFLoader`（已含於 three）＋ `DRACOLoader` 壓縮（幾何 −90~95%）＋ `InstancedMesh`（城市／車流／路燈重複件）。**新 loader 與現有 `voxel/build.js` 可並存，不必拆任何東西。**
+
+### 11.2 保留手刻（bespoke）＋ 罩門
+- **台灣專屬地標保留手刻**（101／圓山／總統府／中正紀念堂／美麗華／西門紅樓／大安森林…）：CC0 不會有、辨識度＝靈魂。
+- ⚠️ **B 的唯一真罩門**：地標改 low-poly 後 **Claude 不會 Blender → 需另立 low-poly 建模管線**（Blender／外包／2026 下半 text-to-3D spike 生堪用台北 101）。列 §8 flag，**V4 前要解**。
+- 兩條路其實都得手做 bespoke 識別件；差別只在成本落在「Claude 手刻 voxel（A）」還是「人／外包建 low-poly（B）」。選 B＝接受這條地標管線，換取**通用件零 Claude loading**。
+
+### 11.3 時機 — V2/V3 不回頭，V4 才全面啟用
+- **V2（空戰）/V3（天氣）本來就不 model-heavy**：武器＝VFX/particle、天氣＝shader，跟換不換模型無關；且現有 voxel 已 code-complete／in-flight。
+- **V2/V3 續用現有 voxel，不中途改**——避免①過早重工 ②voxel/low-poly 混搭打架。
+- **V4（民航＋地勤）/V5（九機場）＝真正 model-heavy ＝ low-poly 全面啟用點**；既有 voxel 機體／城市於 V4 邊界一併 re-skin（機體＝換現成；城市生成＝改成「程序**擺放** low-poly 模組」，Claude 反而更輕）。
+
+### 11.4 為何（含 lesson learned）
+- **省 loading 的最大來源**＝把「盲猜座標的手刻畫圖」移出 Claude，讓 Claude 回去做它最強的玩法／物理／網路邏輯。
+- **越前期鎖方向、後期遷移越便宜**（複利）：現在（V2 初）鎖 B，等於讓 V4 來臨時方向已定，不付「中途才發現要換／voxel 越積越多要重刻」的後期成本。本次只改 canon ＋ 立 §9 gate（極便宜），不動 V2/V3 code。
+- **美學一致性**＝鎖單一素材家族；scale／朝向先用一個 spike（丟一台 Kenney/Quaternius GLB 進現有場景截圖比對）定標準，再鋪開。
