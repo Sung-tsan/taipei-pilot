@@ -132,8 +132,22 @@ export class GameAudio {
     src.connect(f).connect(g).connect(ctx.destination); src.start(t0); src.stop(t0 + dur);
   }
 
-  /** 卡通爆炸（真實模式撞毀/被擊落；tone ladder 卡通端＝噗咻、非寫實） */
-  explode() { if (!this._on()) return; this._noise(0.45, 0.5, 1400, 120); this._tone('square', 180, 50, 0.4, 0.25); }
+  /** 爆炸（被擊落/撞毀）：分層合成——尖銳起爆 + 低頻爆體 + 衝壓 + 碎屑殘響（擬真端近似；
+   *  v2.0-5 註：真·取樣 clip 待 CC0 音效資產 drop，合成已盡量逼近質感）。 */
+  explode() {
+    if (!this._on()) return;
+    this._noise(0.07, 0.6, 5200, 1400);          // 尖銳起爆 transient
+    this._noise(0.55, 0.5, 1300, 80);            // 爆體低頻
+    this._tone('square', 200, 42, 0.45, 0.24);   // 衝壓
+    this._noise(0.4, 0.18, 700, 180, 0.08);      // 碎屑殘響
+  }
+
+  /** 鎖定提示音（剛鎖到目標）：上行雙嗶，短而清楚不吵。 */
+  lockTone() {
+    if (!this._on()) return;
+    this._tone('square', 880, 880, 0.05, 0.11);
+    this._tone('square', 1320, 1320, 0.07, 0.11, 0.06);
+  }
 
   /** 迫降地形音：水花(水) / 刮地(草園) / 輪胎(馬路)，依 v1.1-2 terrain。 @param {string} terrain */
   forcedLandingSound(terrain) {

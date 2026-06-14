@@ -22,6 +22,8 @@ import { MAX_SLOTS } from '../../../shared/constants.js';
 
 /** 武器循環順序（換武器鍵照此循環） */
 export const WEAPON_ORDER = /** @type {const} */ (['cartoon', 'aa', 'ag']);
+/** 空戰子模式 → HUD 圖示（武器卡前綴） */
+const SUBMODE_ICON = { balloons: '🎈', pvp: '⚔️', ai_1v1: '🤖', ai_2v2: '🤝' };
 const BALLOON_COLORS = ['#e0533d', '#3d7be0', '#f2b94b', '#5ac46b', '#b06be0'];
 const BALLOON_COUNT = 8;
 const BALLOON_SCALE = 3.2;        // HITL：氣球放大才找得到（模型 ~4m × 3.2 ≈ 13m）
@@ -221,16 +223,15 @@ export class Dogfight {
   aliveBalloons() { return this.balloons.reduce((n, b) => n + (b.alive ? 1 : 0), 0); }
 
   /**
-   * 找最近的存活氣球，回方位（相對機頭）+ 距離（指引箭頭用，HITL：要指引才找得到）。
-   * @param {{pos:{x:number,y:number,z:number}, heading:number}} plane
+   * 找最近的存活對空目標（氣球/敵機/對手），回方位（相對機頭）+ 距離（指引箭頭用，HITL：要指引才找得到）。
+   * @param {number} slot @param {{pos:{x:number,y:number,z:number}, heading:number}} plane
    * @returns {{rel:number, distM:number}|null}
    */
-  nearestBalloon(plane) {
+  nearestTarget(slot, plane) {
     let best = null; let bestD = Infinity;
-    for (const b of this.balloons) {
-      if (!b.alive) continue;
-      const d = Math.hypot(b.pos.x - plane.pos.x, b.pos.z - plane.pos.z);
-      if (d < bestD) { bestD = d; best = b; }
+    for (const t of this._airTargets(slot)) {
+      const d = Math.hypot(t.pos.x - plane.pos.x, t.pos.z - plane.pos.z);
+      if (d < bestD) { bestD = d; best = t; }
     }
     if (!best) return null;
     const bearing = Math.atan2(best.pos.x - plane.pos.x, -(best.pos.z - plane.pos.z));
@@ -290,14 +291,22 @@ export class Dogfight {
   /** 回機場補滿三種彈匣。 @param {number} slot */
   reloadAll(slot) { for (const id of WEAPON_ORDER) reload(this.mags[slot][id]); }
 
-  /** @param {number} slot HUD：PvP＝擊落+命中率；ai＝剩敵機+擊落+命中率；氣球模式＝剩餘氣球+分數 */
-  hudText(slot) {
+  /** @param {number} slot 計分卡（TaskSlot）：PvP/ai＝擊落+命中率(+剩敵機)；氣球＝剩餘氣球+分數 */
+  scoreText(slot) {
+    if (this.pvp) return `⚔️ 擊落 ${this.kills[slot]}　🎯 命中率 ${this.hitRate(slot)}%`;
+    if (this.enemies.length) return `🛩 敵機 ${this.aliveEnemies()}　擊落 ${this.kills[slot]}　🎯 ${this.hitRate(slot)}%`;
+    return `🎈 ${this.aliveBalloons()}/${this.balloonTotal}　💥 ${this.score[slot]}`;
+  }
+
+  /** @param {number} slot @param {number} now 武器卡（ModeSlot）：子模式 + 武器 + 彈藥/冷卻/補彈狀態 */
+  weaponText(slot, now) {
     const spec = this.weaponSpec(slot);
     const mag = this.mags[slot][this.weaponId(slot)];
-    const wpn = `${spec.label} ${mag.ammo}/${mag.max}`;
-    if (this.pvp) return `⚔️ 擊落 ${this.kills[slot]}　🎯 命中率 ${this.hitRate(slot)}%　${wpn}`;
-    if (this.enemies.length) return `🛩 敵機 ${this.aliveEnemies()}　擊落 ${this.kills[slot]}　🎯 ${this.hitRate(slot)}%　${wpn}`;
-    return `${wpn}　🎈${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
+    let ammo;
+    if (mag.ammo <= 0) ammo = '🔄 回機場補彈';
+    else if (now < mag.readyAt) ammo = `${mag.ammo}/${mag.max} ·充填`; // 冷卻中
+    else ammo = `${mag.ammo}/${mag.max}`;
+    return `${SUBMODE_ICON[/** @type {keyof typeof SUBMODE_ICON} */ (this.dfMode)] ?? '🔥'} ${spec.label} ${ammo}`;
   }
 
   /**

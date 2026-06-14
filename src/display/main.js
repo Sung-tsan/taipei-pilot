@@ -89,6 +89,8 @@ const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
 const pvpInvuln = states.map(() => 0);  // 被擊落後的無敵/暫退到期時間（per slot；PvP + 敵機共用）
 const pvpSmoke = states.map(() => false); // 冒煙中（無敵期過了要清）
+const prevLock = states.map(() => /** @type {string|null} */ (null)); // 鎖定上升緣（剛鎖到才響提示音）
+let dogfightTaught = false; // 空戰首次教學一次性
 let aiRound = 0;        // 敵機波次（難度曲線：越後越難）
 /** @type {boolean[]} 近期對局結果（true=玩家清掉一波、false=玩家被擊落）→ adaptive 放水 */
 const aiResults = [];
@@ -247,9 +249,11 @@ function applyPlayMode(mode) {
     hud.applyMode(i, playMode);
     if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
     else hud.setTask(i, '');
-    if (playMode === 'dogfight') toast(i, '🔥 空戰！飛近氣球自動鎖定 → 按發射');
-    else if (playMode === 'race') toast(i, '🏁 競速模式（賽道即將推出）');
+    if (playMode === 'dogfight') {
+      toast(i, dogfightTaught ? '🔥 空戰開始！' : '🎯 飛近目標→準星變紅鎖定→按發射！'); // 首次教學一次性
+    } else if (playMode === 'race') toast(i, '🏁 競速模式（賽道即將推出）');
   }
+  if (playMode === 'dogfight') dogfightTaught = true; // 之後只報「空戰開始」
 }
 
 /** 換機種：重建所有 plane voxel（保留 slot 色/收放狀態）。HUD 機種名每 frame 自動更新。 @param {string} id */
@@ -470,7 +474,9 @@ function updateDogfight(now) {
     const inp = lastInputs[i];
     if (inp.weaponSwitch && !prevSwitchBit[i]) toast(i, `🔁 ${dogfight.cycleWeapon(i)}`); // 換武器（上升緣循環）
     prevSwitchBit[i] = !!inp.weaponSwitch;
-    dogfight.updateLock(i, s); // 對空鎖定（PvP 對手 / 最近氣球，飛近自動）
+    const lock = dogfight.updateLock(i, s); // 對空鎖定（PvP 對手 / 敵機 / 最近氣球，飛近自動）
+    if (lock && lock !== prevLock[i]) audio.lockTone(); // 剛鎖到 → 提示音
+    prevLock[i] = lock;
     if (inp.fire) {
       const r = dogfight.tryFire(i, s, now); // 依武器冷卻節流
       if (r.fired && r.sound) { audio.weaponFire(r.sound); net.sendFx(i, 'bump'); }
@@ -621,18 +627,22 @@ function loop(/** @type {number} */ now) {
     if (playMode === 'mission') { // 任務檢查 + 任務卡（TaskSlot）
       handleRunnerEvent(i, runner.update(i, s));
       hud.setTask(i, taskHtml(i, s));
-    } else if (playMode === 'dogfight') { // 空戰計分卡（TaskSlot）：武器 + 彈藥 + 剩餘氣球 + 分數
-      let card = dogfight.hudText(i);
-      if (!dogfight.lockId[i]) { // 沒鎖到時給「找最近氣球」指引箭頭（HITL：要指引才找得到）
-        const g = dogfight.nearestBalloon(s);
+    } else if (playMode === 'dogfight') { // 空戰計分卡（TaskSlot）：擊落/命中率 或 剩餘氣球/分數
+      let card = dogfight.scoreText(i);
+      if (!dogfight.lockId[i] && s.mode === 'flying') { // 沒鎖到時給「找最近目標」指引箭頭（HITL：要指引才找得到）
+        const g = dogfight.nearestTarget(i, s);
         if (g) card = `<span class="t-arrow" style="transform:rotate(${g.rel}rad)">⬆️</span> ${(g.distM / 1000).toFixed(1)}km　${card}`;
       }
       hud.setTask(i, card);
     }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
-      const lock = (playMode === 'dogfight' && dogfight.lockId[i]) ? '　🎯' : ''; // 鎖定指示
-      hud.setMode(i, planeSpec(planeId).name + lock);
+      if (playMode === 'dogfight') {
+        const lock = dogfight.lockId[i] ? '　🎯鎖定' : ''; // 鎖定指示
+        hud.setMode(i, dogfight.weaponText(i, now) + lock); // ModeSlot：子模式 + 武器 + 彈藥/冷卻
+      } else {
+        hud.setMode(i, planeSpec(planeId).name);
+      }
       hud.setAlt(i, `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`);
     } else {
       hud.setMode(i, '🛫 推滿油門起飛！');

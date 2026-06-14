@@ -140,14 +140,30 @@ describe('Dogfight 整合', () => {
     expect(df.projectiles.at(-1)?.missile).toBe(true);
   });
 
-  it('nearestBalloon：回最近存活氣球的相對方位 + 距離（指引箭頭用）', () => {
+  it('nearestTarget：回最近存活目標的相對方位 + 距離（指引箭頭用）', () => {
     const plane = { pos: { x: 0, y: 200, z: 0 }, heading: 0 };
     isolateBalloon(df, { x: 0, y: 200, z: -300 });
     df.balloons.forEach((b, i) => { if (i !== 0) b.alive = false; });
-    const g = df.nearestBalloon(plane);
+    const g = df.nearestTarget(0, plane);
     expect(g).not.toBeNull();
     expect(Math.abs(/** @type {any} */ (g).rel)).toBeLessThan(0.01); // 正前方 → rel≈0
     expect(/** @type {any} */ (g).distM).toBeCloseTo(300, 0);
+  });
+
+  it('scoreText / weaponText：計分卡與武器卡分流（含冷卻/補彈狀態）', () => {
+    // 氣球模式：計分卡有🎈、武器卡有彈藥
+    expect(df.scoreText(0)).toContain('🎈');
+    expect(df.weaponText(0, 0)).toContain('/'); // 彈藥 a/m
+    // 冷卻中：fire 後 readyAt 在未來 → 顯示「充填」
+    const id = df.weaponId(0);
+    df.mags[0][id].readyAt = 999999;
+    expect(df.weaponText(0, 0)).toContain('充填');
+    // 彈盡：顯示回機場補彈
+    df.mags[0][id].ammo = 0;
+    expect(df.weaponText(0, 1000000)).toContain('補彈');
+    // PvP/ai 計分卡＝擊落+命中率
+    df.setMode('pvp');
+    expect(df.scoreText(0)).toContain('擊落');
   });
 
   it('PvP：setMode(pvp) 清氣球、鎖定對手 → 擊中 → playerHit + 擊落/命中計分', () => {
