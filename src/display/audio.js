@@ -155,6 +155,19 @@ export class GameAudio {
     for (let k = 0; k < 5; k++) { this._noise(0.3, 0.3, 1800, 200, k * 0.25); this._tone('triangle', 800 + k * 120, 1600, 0.2, 0.15, k * 0.25 + 0.02); }
   }
 
+  /** 武器發射（tone ladder）：卡通＝可愛「咻噗」、擬真＝低頻衝壓。 @param {'cartoon'|'boom'} sound */
+  weaponFire(sound) {
+    if (!this._on()) return;
+    if (sound === 'cartoon') { this._tone('square', 900, 1500, 0.12, 0.18); this._noise(0.08, 0.08, 2000, 600); }
+    else { this._noise(0.18, 0.16, 1200, 200); this._tone('sawtooth', 200, 90, 0.18, 0.12); }
+  }
+
+  /** 氣球啵（去暴力命中音：短亮「啵」） */
+  balloonPop() { if (!this._on()) return; this._tone('triangle', 1200, 500, 0.12, 0.25); this._noise(0.06, 0.12, 2600, 800); }
+
+  /** 對地命中爆炸（擬真端，比 explode 更重） */
+  groundBoom() { if (!this._on()) return; this._noise(0.55, 0.55, 1100, 90); this._tone('square', 140, 45, 0.5, 0.28); }
+
   /** 落地成功小鈴（上行三音） */
   landingChime() {
     const ctx = this.ctx;

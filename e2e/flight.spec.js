@@ -109,6 +109,44 @@ test('玩法選單：切 free/dogfight/race + 選 F-16 → 起飛、HUD 顯示 F
   await ctx.close();
 });
 
+// v2.0-2：空戰整合——選空戰→氣球靶場 spawn→起飛→按 F 發射→彈藥扣減→HUD 顯示武器/彈藥。
+test('空戰：選空戰 → 氣球靶場 spawn → 起飛開火 → 彈藥扣減、HUD 顯示武器', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 選空戰模式 → 氣球靶場 spawn
+  await display.click('#playModeBtn');
+  await display.click('#pmRow [data-pm="dogfight"]');
+  await display.click('#modeMenuClose');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.gameMode)).toBe('dogfight');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfight.balloons.length)).toBeGreaterThan(0);
+
+  // 鍵盤起飛
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space'); // 油門維持（kb.th 保留），續飛
+
+  // 開火（按住 F）→ 彈藥扣減（即使沒鎖到也會發射、扣彈，證明連線生效）
+  const ammoBefore = await display.evaluate(() => {
+    const d = /** @type {any} */ (window).__tp.dogfight; return d.mags[0][d.weaponId(0)].ammo;
+  });
+  await display.keyboard.down('KeyF');
+  await expect.poll(
+    () => display.evaluate(() => { const d = /** @type {any} */ (window).__tp.dogfight; return d.mags[0][d.weaponId(0)].ammo; }),
+    { timeout: 10000 },
+  ).toBeLessThan(ammoBefore);
+  await display.keyboard.up('KeyF');
+
+  // HUD：空戰計分卡（TaskSlot）顯示武器 + 彈藥
+  await expect(display.locator('#hud-0 .task-slot')).toContainText('飛彈');
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

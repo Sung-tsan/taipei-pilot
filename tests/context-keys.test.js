@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   FREE_FLIGHT_KEYS, DOGFIGHT_KEYS, RACE_KEYS, KEYS_BY_MODE, keysForMode,
 } from '../src/remote/context-keys.js';
+import { BTN } from '../shared/protocol.js';
 
 describe('context-keys 模式對照', () => {
   it('每份 config 都是「正好兩顆」可替換鍵（槽位數固定）', () => {
@@ -28,10 +29,13 @@ describe('context-keys 模式對照', () => {
     expect(keysForMode('weird')).toBe(FREE_FLIGHT_KEYS);
   });
 
-  it('空戰鍵含「發射」與「換武器」動作（v2.0-2/-5 接 handler）', () => {
-    const ids = DOGFIGHT_KEYS.map((k) => k.action);
-    expect(ids).toContain('fire');
-    expect(ids).toContain('weaponSwitch');
+  it('空戰鍵＝發射(FIRE 位元) + 換武器(WEAPON_SWITCH 位元)，走 btn bitmask（momentary）', () => {
+    const ids = DOGFIGHT_KEYS.map((k) => k.id);
+    expect(ids).toEqual(['fire', 'weapon']);
+    const fire = DOGFIGHT_KEYS.find((k) => k.id === 'fire');
+    const weapon = DOGFIGHT_KEYS.find((k) => k.id === 'weapon');
+    expect(fire?.btn).toBe(BTN.FIRE);
+    expect(weapon?.btn).toBe(BTN.WEAPON_SWITCH);
   });
 
   it('KEYS_BY_MODE 涵蓋四個玩法模式', () => {

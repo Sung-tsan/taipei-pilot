@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
-import { parseMsg, encodeMsg } from '../shared/protocol.js';
+import { parseMsg, encodeMsg, BTN } from '../shared/protocol.js';
 
 describe('parseMsg', () => {
   it('接受合法 hello（remote 含/不含 token）', () => {
@@ -77,5 +77,23 @@ describe('parseMsg', () => {
       .toEqual({ t: 'pstate', slot: 0, gear: true, mode: 'flying' });
     expect(parseMsg(JSON.stringify({ t: 'pstate', slot: 1, gear: false, mode: 'flying', spd: 120, alt: 300, hdg: 90 })))
       .toEqual({ t: 'pstate', slot: 1, gear: false, mode: 'flying', spd: 120, alt: 300, hdg: 90 });
+  });
+
+  // —— v2.0-2：空戰按鍵位元 + 模式廣播 ——
+  it('BTN 含 FIRE / WEAPON_SWITCH，且與 GEAR_UP 不互撞（獨立位元）', () => {
+    expect(BTN.GEAR_UP).toBe(1);
+    expect(BTN.FIRE).toBe(2);
+    expect(BTN.WEAPON_SWITCH).toBe(4);
+    // 三鍵同時按 → bitmask 互不干擾
+    const b = BTN.GEAR_UP | BTN.FIRE | BTN.WEAPON_SWITCH;
+    expect(!!(b & BTN.FIRE)).toBe(true);
+    expect(!!(b & BTN.WEAPON_SWITCH)).toBe(true);
+    expect(!!(b & BTN.GEAR_UP)).toBe(true);
+  });
+
+  it('mode 訊息：合法 string 接受、非 string 丟棄', () => {
+    expect(parseMsg(JSON.stringify({ t: 'mode', mode: 'dogfight' }))).toEqual({ t: 'mode', mode: 'dogfight' });
+    expect(parseMsg(JSON.stringify({ t: 'mode', mode: 123 }))).toBeNull();
+    expect(parseMsg(JSON.stringify({ t: 'mode' }))).toBeNull();
   });
 });

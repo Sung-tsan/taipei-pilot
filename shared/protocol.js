@@ -26,14 +26,17 @@
  *   —— 複雜版儀表用（向後相容，簡單版忽略）—— spd=空速 km/h, alt=高度 m, hdg=航向 0..359°
  * @typedef {{ t:'display_replaced' }} DisplayReplaced                      // srv→舊 display：被新視窗接管，停止重連
  * @typedef {{ t:'reset' }} ResetMsg                                        // display→srv：清空所有 slot（換場/測試）
+ * @typedef {{ t:'mode', mode:string }} ModeMsg                            // display→srv→remotes：目前玩法模式（remote 換 context 鍵用）
  * @typedef {{ t:'ping' }} PingMsg                                          // client→srv：應用層心跳（半開連線偵測）
  * @typedef {{ t:'pong' }} PongMsg                                          // srv→client：心跳回覆
- * @typedef {HelloDisplay|HelloRemote|Welcome|SlotsFull|DisplayOk|DisplayStatus|RemoteJoined|RemoteLeft|RemoteBack|RemoteGone|InputMsg|FxMsg|PStateMsg|ResetMsg|DisplayReplaced|PingMsg|PongMsg} Msg
+ * @typedef {HelloDisplay|HelloRemote|Welcome|SlotsFull|DisplayOk|DisplayStatus|RemoteJoined|RemoteLeft|RemoteBack|RemoteGone|InputMsg|FxMsg|PStateMsg|ResetMsg|ModeMsg|DisplayReplaced|PingMsg|PongMsg} Msg
  */
 
 /** 按鍵 bitmask（`in` 訊息的 b 欄；送「期望狀態」非事件） */
 export const BTN = {
-  GEAR_UP: 1, // 設起 = 想收起落架（地面上 display 會忽略，離地後自動生效）
+  GEAR_UP: 1,       // 設起 = 想收起落架（地面上 display 會忽略，離地後自動生效）
+  FIRE: 2,          // 空戰：發射（momentary 按住；display 端依武器冷卻節流）
+  WEAPON_SWITCH: 4, // 空戰：換武器（momentary；display 端偵測上升緣循環切換）
   // 喇叭已改為 remote 本地播聲（兩機同玩不互相干擾），不再走 b bitmask。
 };
 
@@ -68,6 +71,7 @@ export function parseMsg(raw) {
         ? { t: 'welcome', slot: m.slot, token: m.token } : null;
     case 'slots_full': return { t: 'slots_full' };
     case 'reset': return { t: 'reset' };
+    case 'mode': return typeof m.mode === 'string' ? { t: 'mode', mode: m.mode } : null;
     case 'ping': return { t: 'ping' };
     case 'pong': return { t: 'pong' };
     case 'display_replaced': return { t: 'display_replaced' };

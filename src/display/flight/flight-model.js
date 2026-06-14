@@ -44,9 +44,11 @@ export const P = {
 /**
  * @typedef {{ x:number, y:number, z:number }} Vec3
  * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
- *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean }} Input
+ *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean,
+ *             fire?:boolean, weaponSwitch?:boolean }} Input
  *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
  *   landAnywhere＝真實模式：關閉機場外低空拉起、機場外觸地＝迫降（缺省 false＝與 v1 一致）。
+ *   fire/weaponSwitch＝空戰按鍵（flight-model 忽略，由 main 的空戰邏輯消費）。
  * @typedef {'parked'|'rolling'|'flying'} PlaneMode
  * @typedef {{
  *   pos: Vec3, heading: number, pitch: number, bank: number,

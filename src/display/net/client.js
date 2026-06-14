@@ -101,6 +101,13 @@ export class DisplayNet {
     }
   }
 
+  /** 廣播目前玩法模式給遙控器（換 context 鍵）。 @param {string} mode */
+  sendMode(mode) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(encodeMsg({ t: 'mode', mode }));
+    }
+  }
+
   /**
    * 機況回報（遙控器 UI 顯示起落架真實狀態 + 複雜版迷你儀表）。spd/alt/hdg 選送，簡單版忽略。
    * @param {number} slot @param {boolean} gear @param {'parked'|'rolling'|'flying'} mode

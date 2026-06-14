@@ -25,6 +25,8 @@ export class RemoteNet {
     /** @type {(state:this)=>void} */ this.onState = () => {};
     /** @type {(kind:string)=>void} */ this.onFx = () => {};
     /** @type {(ps: import('../../../shared/protocol.js').PStateMsg)=>void} */ this.onPState = () => {};
+    /** @type {(mode:string)=>void} */ this.onMode = () => {};
+    /** @type {string} 最後一次收到的玩法模式（late-join 後 display 會補送） */ this.mode = 'free';
   }
 
   connect() {
@@ -66,6 +68,11 @@ export class RemoteNet {
         case 'pstate':
           this.onPState(msg);
           return;
+        case 'mode':
+          this.mode = msg.mode;
+          this.onMode(msg.mode);
+          return; // mode 不觸發 state render
+
         default:
           return;
       }

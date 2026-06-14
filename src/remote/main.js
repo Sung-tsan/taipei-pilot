@@ -4,7 +4,7 @@ import { TiltReader } from './tilt.js';
 import { ThrottleSlider } from './throttle.js';
 import { Feedback } from './feedback.js';
 import { RemoteNet } from './net/client.js';
-import { FREE_FLIGHT_KEYS, mountContextKeys } from './context-keys.js';
+import { keysForMode, mountContextKeys } from './context-keys.js';
 import { ComplexControls } from './complex-controls.js';
 import { INPUT_HZ, SLOT_COLORS, SLOT_NAMES } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
@@ -167,20 +167,23 @@ function renderGear(gearDown) {
   gearState.textContent = gearDown ? '已放下' : '已收起';
 }
 
-// —— context 動作鍵 slot（喇叭＝本地播聲；降落輔助＝收油門＋放輪）——
-const ctxKeys = mountContextKeys($('ctxKeys'), FREE_FLIGHT_KEYS, {
-  onAction: (action) => {
-    if (action === 'horn') {
-      feedback.unlockAudio(); // 保險：確保 AudioContext running
-      feedback.horn();        // 喇叭從這支手機自己播 → 兩機同玩不互相干擾
-    } else if (action === 'landAssist') {
-      throttle.set(0.35);  // 進場油門（仍在 V_GLIDE 之上、不失速），孩子一鍵設定下降
-      wantGearUp = false;  // 確保起落架放下
-      renderGear(true);
-      feedback.unlockAudio();
-    }
-  },
-});
+// —— context 動作鍵 slot（每模式換 config：自由飛=喇叭/降落輔助；空戰=發射/換武器）——
+// 喇叭=本地播聲；降落輔助=收油門＋放輪；空戰鍵走 btn bitmask（momentary，無 action handler）。
+/** @type {(action:string)=>void} */
+const onCtxAction = (action) => {
+  if (action === 'horn') {
+    feedback.unlockAudio(); // 保險：確保 AudioContext running
+    feedback.horn();        // 喇叭從這支手機自己播 → 兩機同玩不互相干擾
+  } else if (action === 'landAssist') {
+    throttle.set(0.35);  // 進場油門（仍在 V_GLIDE 之上、不失速），孩子一鍵設定下降
+    wantGearUp = false;  // 確保起落架放下
+    renderGear(true);
+    feedback.unlockAudio();
+  }
+};
+let ctxKeys = mountContextKeys($('ctxKeys'), keysForMode(net.mode), { onAction: onCtxAction });
+// display 廣播玩法模式 → 換這支手機的 context 鍵（自由飛↔空戰↔競速）。
+net.onMode = (/** @type {string} */ mode) => { ctxKeys = mountContextKeys($('ctxKeys'), keysForMode(mode), { onAction: onCtxAction }); };
 
 net.onState = () => {
   if (net.slotsFull) {

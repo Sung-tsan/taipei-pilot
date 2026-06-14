@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>GLB × voxel coexistence spike</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe0ef; font-family: system-ui, sans-serif; }
+  #legend { position: fixed; top: 8px; left: 8px; background: rgba(255,255,255,.84); padding: 8px 11px;
+            border-radius: 8px; font-size: 13px; line-height: 1.55; color: #23283a; z-index: 10; max-width: 70ch; }
+  #log { position: fixed; bottom: 8px; left: 8px; background: rgba(0,0,0,.55); color: #cfe;
+         padding: 6px 8px; border-radius: 6px; font: 11px ui-monospace, monospace; white-space: pre; z-index: 10; }
+  b { color: #d8402f; }
+</style>
+</head>
+<body>
+<div id="legend">
+  螢幕左→右：<b>①</b> voxel T-34C（現有風格） · <b>②</b> Kenney sedan 原樣 (PBR / smooth) ·
+  <b>③</b> sedan 正規化 (Lambert + flatShading) · <b>④</b> firetruck 正規化 · <b>⑤</b> van 正規化
+  <br>— 同一套場景燈光 / 霧 / 色票（taipei_pilot <code>world.js</code>），測 voxel 與 low-poly 共存
+</div>
+<div id="log"></div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

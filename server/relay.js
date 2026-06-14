@@ -91,6 +91,12 @@ export class Relay {
         }
         return;
       }
+      case 'mode': {
+        // 玩法模式廣播：display 改模式 → 轉發所有 remote（換 context 鍵）。
+        if (client.role !== 'display') return;
+        this._broadcastToRemotes(msg);
+        return;
+      }
       case 'reset': {
         if (client.role !== 'display') return;
         this.slots.forEach((slot, i) => {

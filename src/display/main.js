@@ -10,6 +10,7 @@ import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
 import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
+import { Dogfight } from './combat/dogfight.js';
 import { ChaseCam } from './render/chase-cam.js';
 import { LandmarkLabels } from './render/labels.js';
 import { ViewportRenderer } from './render/viewports.js';
@@ -75,6 +76,13 @@ let playMode = 'mission'; // free / mission / dogfight / race（v2.0-1 起四模
 let dogfightMode = 'balloons'; // 空戰子模式 balloons/pvp/ai_1v1/ai_2v2（v2.0-1 佔位，內容後階段填）
 let planeId = DEFAULT_PLANE;    // 目前機種（v2.0-1：T-34C / F-16 可選；v1.2 接時數+里程碑解鎖）
 let missionTaught = false; // 任務模式首次教學瞬間（一次性）
+
+// —— 空戰（v2.0-2）：氣球靶 + 武器 + 對地紅區 ——
+// 地標豁免區（红線：空對地命中 7 教育地標無效）；demo 紅區放開闊處（場景化紅區由 v2.0-4 進 airspace）。
+const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @type {any} */ (l).clear ?? 200) + 80 }));
+const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
+const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY });
+const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -117,6 +125,7 @@ function refreshDrivers() {
         states[i].speed = 45;
       }
       planes[i].setVisible(true);
+      net.sendMode(playMode); // 新上線的遙控器拿到目前模式 → 換對的 context 鍵
     }
     if (!driven && wasDriven[i]) planes[i].setVisible(false);
     wasDriven[i] = driven;
@@ -210,16 +219,18 @@ function renderModeMenuUI() {
   $('dogfightSection').classList.toggle('disabled', playMode !== 'dogfight'); // 子模式僅空戰可選
 }
 
-/** 套用玩法模式到所有在線 slot（切 HUD 契約 + 任務啟停 + 提示） @param {string} mode */
+/** 套用玩法模式到所有在線 slot（切 HUD 契約 + 任務啟停 + 空戰靶場 + 廣播給 remote） @param {string} mode */
 function applyPlayMode(mode) {
   playMode = mode;
   renderModeBtn();
+  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：spawn/清氣球靶場
+  net.sendMode(playMode);                       // 廣播給遙控器 → 換 context 鍵（發射/換武器）
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
     hud.applyMode(i, playMode);
     if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
     else hud.setTask(i, '');
-    if (playMode === 'dogfight') toast(i, '🔥 空戰模式（武器即將推出）');
+    if (playMode === 'dogfight') toast(i, '🔥 空戰！飛近氣球自動鎖定 → 按發射');
     else if (playMode === 'race') toast(i, '🏁 競速模式（賽道即將推出）');
   }
 }
@@ -286,6 +297,7 @@ function inputFor(slot) {
     if (live) return {
       r: live.r, p: live.p, th: live.th, gearUp: !!(live.b & BTN.GEAR_UP),
       rudder: live.rudder ?? 0, flaps: live.flaps ?? 0, trim: live.trim ?? 0, // 複雜版（缺＝中立）
+      fire: !!(live.b & BTN.FIRE), weaponSwitch: !!(live.b & BTN.WEAPON_SWITCH), // 空戰鍵
     };
   }
   const lastInput = lastInputs[slot];
@@ -411,6 +423,33 @@ function taskHtml(i, s) {
   return `${lead}${m.prompt.text}`;
 }
 
+/** 空戰每步：換武器(上升緣)/對空鎖定/發射 + 彈丸推進 + 命中事件 @param {number} now */
+function updateDogfight(now) {
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (!wasDriven[i]) { prevSwitchBit[i] = false; continue; }
+    const s = states[i];
+    if (s.mode !== 'flying') { // 回到地面（機場附近）→ 補滿彈藥
+      if (Math.hypot(s.pos.x, s.pos.z) < 2000) dogfight.reloadAll(i);
+      prevSwitchBit[i] = false;
+      continue;
+    }
+    const inp = lastInputs[i];
+    if (inp.weaponSwitch && !prevSwitchBit[i]) toast(i, `🔁 ${dogfight.cycleWeapon(i)}`); // 換武器（上升緣循環）
+    prevSwitchBit[i] = !!inp.weaponSwitch;
+    dogfight.updateLock(i, s); // 對空鎖定（最近氣球，飛近自動）
+    if (inp.fire) {
+      const r = dogfight.tryFire(i, s, now); // 依武器冷卻節流
+      if (r.fired && r.sound) { audio.weaponFire(r.sound); net.sendFx(i, 'bump'); }
+    }
+  }
+  for (const ev of dogfight.step(DT, now)) {
+    if (ev.kind === 'pop') audio.balloonPop();
+    else if (ev.kind === 'boom') { audio.groundBoom(); toast(ev.owner, '🎯 紅區命中！'); }
+    else if (ev.kind === 'exempt') toast(ev.owner, '⛔ 地標不能打（保護）'); // 红線回饋
+    // miss：不吵（無 toast）
+  }
+}
+
 let kbWasActive = false;
 function loop(/** @type {number} */ now) {
   const frame = Math.min((now - last) / 1000, 0.25);
@@ -448,6 +487,7 @@ function loop(/** @type {number} */ now) {
         if (playMode === 'mission') handleRunnerEvent(i, runner.notify(i, 'landed_runway', { x: states[i].pos.x, z: states[i].pos.z }));
       }
     }
+    if (playMode === 'dogfight') updateDogfight(now); // 空戰：鎖定/發射/彈丸/命中
     acc -= DT;
   }
   reportPState(now);
@@ -473,10 +513,13 @@ function loop(/** @type {number} */ now) {
     if (playMode === 'mission') { // 任務檢查 + 任務卡（TaskSlot）
       handleRunnerEvent(i, runner.update(i, s));
       hud.setTask(i, taskHtml(i, s));
+    } else if (playMode === 'dogfight') { // 空戰計分卡（TaskSlot）：武器 + 彈藥 + 分數（v2.0-5 做正式呈現）
+      hud.setTask(i, dogfight.hudText(i));
     }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
-      hud.setMode(i, planeSpec(planeId).name);
+      const lock = (playMode === 'dogfight' && dogfight.lockId[i]) ? '　🎯' : ''; // 鎖定指示
+      hud.setMode(i, planeSpec(planeId).name + lock);
       hud.setAlt(i, `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`);
     } else {
       hud.setMode(i, '🛫 推滿油門起飛！');
@@ -527,6 +570,7 @@ requestAnimationFrame(loop);
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
   flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),
+  dogfight, // v2.0-2 e2e/dev：戳武器/彈藥/分數/氣球/彈丸狀態
   terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
   // e2e/dev：直接完成當前任務（略過飛到定點），驗任務迴圈 + 收集 + 慶祝
   completeMission: (/** @type {number} */ slot) => {

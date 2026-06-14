@@ -1,7 +1,8 @@
 // @ts-check
 // remote context 動作鍵 slot：2 顆可替換大鍵。每模式換 config 不改框架（UI 層的 B1）。
-// v1.1-0 預設「喇叭 / 降落輔助」；V2 換「開火 / 鎖定」、任務模式換任務動作。
+// v1.1-0 預設「喇叭 / 降落輔助」；V2 換「開火 / 換武器」、任務模式換任務動作。
 // 北極星 DESIGN_WEB_UI.md §6。
+import { BTN } from '../../shared/protocol.js';
 
 /**
  * @typedef {{
@@ -22,10 +23,10 @@ export const FREE_FLIGHT_KEYS = /** @type {ContextKey[]} */ ([
 // —— V2 佔位 config（v2.0-1 先定資料；發射 btn 位元由 v2.0-2 加進 protocol，
 //    remote 端依模式換上這份鍵由 v2.0-5 接）——
 
-/** 空戰模式兩顆替換鍵：發射 + 換武器。btn/handler 由後階段補。 */
+/** 空戰模式兩顆替換鍵：發射（按住連發、display 依冷卻節流）+ 換武器（上升緣循環）。 */
 export const DOGFIGHT_KEYS = /** @type {ContextKey[]} */ ([
-  { id: 'fire', label: '🔥 發射', hint: '飛近自動鎖定', action: 'fire' },
-  { id: 'weapon', label: '🎯 換武器', hint: '卡通/飛彈', action: 'weaponSwitch' },
+  { id: 'fire', label: '🔥 發射', hint: '飛近自動鎖定', btn: BTN.FIRE },
+  { id: 'weapon', label: '🎯 換武器', hint: '卡通/飛彈', btn: BTN.WEAPON_SWITCH },
 ]);
 
 /** 競速模式兩顆替換鍵：衝刺 + 降落輔助。 */
