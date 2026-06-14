@@ -3,13 +3,13 @@
 > 每個 handoff §0-PRE 要求「baseline 全綠才動工」。本檔記錄**當前綠燈基準**、**已修的坑**、以及
 > **已知非問題（假性紅燈）**——下次 session 照表對照即可，不用重新調查同一件事或重跑驗證。
 
-## 當前 baseline（最後更新 2026-06-13，含 v1.1-0 ~ v1.1-5 agent 部分）
+## 當前 baseline（最後更新 2026-06-14，含 V2 v2.0-1~4 + 空戰 HITL 修正）
 
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **135 passed**（14 files；+v1_1-regression） |
-| 整合 | `npm run e2e`（playwright） | **14 passed**（connect ×11 + flight ×3；含 overlap + RWD regression） |
+| 單元 | `npm test`（vitest） | **280 passed**（24 files；+weapons/enemy-ai/race/balloon/dogfight/minimap/missile/plane-collision/plane-specs/context-keys） |
+| 整合 | `npm run e2e`（playwright） | **19 passed**（connect ×11 + flight ×8；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1 regression） |
 
 > JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
@@ -40,4 +40,5 @@
 > 規則：被判定為「不是真 bug、不該動程式」的紅燈或缺測，記在這裡，附原因。下次看到照此略過。
 
 - **HITL 手感閘不在自動化 baseline 內**：傾斜手感、iOS 權限、震動、雙真機分屏、crab/協調轉彎等「手感類」驗收只能真機由 Sung 親驗（鐵律 2，不可 proxy）。自動化測試**沒有**這些並非紅燈——`connect.spec.js` 開頭註解已言明「傾斜手感、iOS 權限、震動只能真機驗」。不要為了補這些而寫假測試。
+- **Playwright 瀏覽器啟動逾時（環境 flake，非程式問題）**：機器資源吃緊時偶見 `browserType.launch: Timeout 180000ms exceeded`（chromium-headless-shell 啟不起來），整套 e2e 跑很久（曾 16min vs 正常 ~1.5min）且首測（connect 第一個）紅。**這是環境/資源 flake，不是測試或程式 bug。** 處置：清掉殘留 server/瀏覽器程序（`lsof -ti:8443 | xargs kill -9`、`pkill -f chrome-headless-shell`）後重跑即綠，不要追這個「紅」。
 - （目前自動化套件內無其他假性紅燈。新發現再往下加。）
