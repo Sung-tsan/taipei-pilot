@@ -55,6 +55,7 @@ function makeSkyDome() {
     vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false,
   }));
   mesh.renderOrder = -1;
+  mesh.name = 'skydome'; // v3.0-1 天氣 modulate 用（陰天/雨/霧時染灰）
   return mesh;
 }
 

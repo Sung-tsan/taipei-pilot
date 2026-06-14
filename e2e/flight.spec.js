@@ -231,6 +231,30 @@ test('競速：選競速 → 賽道標記建出、切穿圈/地標兩型', async
   await ctx.close();
 });
 
+// v3.0-1：天氣 modulate world.js——安全模式恆晴(fog 遠)；霧/雨把 fog 拉近(能見度降)。
+test('天氣：安全模式恆晴、設霧/雨 → fog 拉近（modulate world.js）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 預設安全模式 → 開場恆晴、fog 遠（能見度好）
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.weather)).toBe('clear');
+  const farClear = await display.evaluate(() => /** @type {any} */ (window).__tp.weatherRenderer.fog.far);
+  expect(farClear).toBeGreaterThan(4000);
+
+  // 設霧 → fog near 拉很近（能見度降，靠箭頭/光柱導航）
+  await display.evaluate(() => /** @type {any} */ (window).__tp.setWeather('fog'));
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.weather)).toBe('fog');
+  const nearFog = await display.evaluate(() => /** @type {any} */ (window).__tp.weatherRenderer.fog.near);
+  expect(nearFog).toBeLessThan(500);
+
+  // 設雨 → 下雨粒子顯示
+  await display.evaluate(() => /** @type {any} */ (window).__tp.setWeather('rain'));
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.weatherRenderer.rain.visible)).toBe(true);
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

@@ -5,6 +5,8 @@ import { DisplayNet } from './net/client.js';
 import { renderQr } from './ui/qr-panel.js';
 import { KeyboardInput } from './input/keyboard.js';
 import { makeWorld } from './scene/world.js';
+import { WeatherRenderer } from './weather/weather-render.js';
+import { makeWeather, rollWeather, weatherProfile, DEFAULT_AIRPORT } from './weather/weather.js';
 import { spawnPose } from './scene/airport.js';
 import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
@@ -98,6 +100,23 @@ let aiRound = 0;        // 敵機波次（難度曲線：越後越難）
 const aiResults = [];
 const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
 let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
+
+// —— 天氣（v3.0-1）：modulate world.js + 後果軸閘（安全恆晴/溫和溫和/真實全開）——
+const weatherRenderer = new WeatherRenderer(scene);
+const weather = makeWeather();
+/** 依機場 profile + 後果模式 roll 天氣並套用（進場/換模式時呼叫）。 */
+function rollAndApplyWeather() {
+  weather.type = rollWeather(weatherProfile(DEFAULT_AIRPORT), settings.mode);
+  weatherRenderer.apply(weather.type);
+}
+rollAndApplyWeather(); // 開場先 roll 一次（依目前後果模式）
+// dev/HITL：按 C 循環天氣預覽（晴→多雲→雨→霧）。正式天氣由 roll + 天氣挑戰任務(v3.0-4)驅動。
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyC') return;
+  const order = ['clear', 'cloudy', 'rain', 'fog'];
+  weather.type = order[(order.indexOf(weather.type) + 1) % order.length];
+  weatherRenderer.apply(weather.type);
+});
 
 // —— 競速（v2.1-1）：兩型（穿圈航線 / 地標衝刺）+ 起點/終點視覺（HITL #4）——
 let raceType = 'rings';          // rings（穿圈航線）/ landmark（地標衝刺）
@@ -235,6 +254,7 @@ const settingsEl = $('settings');
 function applySettings() {
   for (let i = 0; i < MAX_SLOTS; i++) conseq[i] = makeConsequence(settings.mode, settings.heartsMax);
   planes.forEach((p) => p.setDamaged(false));
+  rollAndApplyWeather(); // 後果模式變 → 重 roll 天氣（安全恆晴/溫和溫和/真實全開）
 }
 function renderSettingsUI() {
   for (const b of document.querySelectorAll('#modeRow .set-opt')) {
@@ -786,6 +806,8 @@ function loop(/** @type {number} */ now) {
   for (let i = 0; i < MAX_SLOTS; i++) updateReticle(i);
   renderMinimap();
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
+  const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
+  weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
 
   if (debugOn) {
     fpsCount++; fpsTime += frame;
@@ -811,6 +833,10 @@ requestAnimationFrame(loop);
   get raceType() { return raceType; },
   get race() { return race; },
   raceMarkers, // v2.1-1 e2e：戳賽道標記數
+  get weather() { return weather.type; }, // v3.0-1 e2e/dev
+  setWeather: (/** @type {string} */ t) => { weather.type = t; weatherRenderer.apply(t); },
+  rollWeather: () => { rollAndApplyWeather(); return weather.type; },
+  weatherRenderer, // e2e：驗 fog 被天氣 modulate
   setPlayMode: (/** @type {string} */ m) => applyPlayMode(m),
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
