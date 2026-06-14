@@ -1,5 +1,6 @@
 // @ts-check
 // display 主流程：3D 場景 + 連線 + 固定步長遊戲迴圈 + 分屏渲染。
+import * as THREE from 'three';
 import { DisplayNet } from './net/client.js';
 import { renderQr } from './ui/qr-panel.js';
 import { KeyboardInput } from './input/keyboard.js';
@@ -11,6 +12,8 @@ import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
 import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
 import { Dogfight } from './combat/dogfight.js';
+import { planesColliding } from './flight/plane-collision.js';
+import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
 import { LandmarkLabels } from './render/labels.js';
 import { ViewportRenderer } from './render/viewports.js';
@@ -83,6 +86,13 @@ const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @ty
 const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
 const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY });
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
+const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
+let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
+
+// —— 角落小地圖（任何模式顯示友/敵方位距離；HITL）——
+const minimap = new Minimap(/** @type {HTMLCanvasElement} */ ($('minimap')), { size: 160 });
+const reticleEls = [0, 1].map((i) => /** @type {HTMLElement|null} */ ($(`hud-${i}`)?.querySelector('.reticle')));
+const _reticleVec = new THREE.Vector3();
 /** 最後一次有效輸入（render 用油門轉螺旋槳） */
 const lastInputs = /** @type {import('./flight/flight-model.js').Input[]} */ (
   states.map(() => ({ r: 0, p: 0, th: 0, gearUp: false }))
@@ -443,11 +453,53 @@ function updateDogfight(now) {
     }
   }
   for (const ev of dogfight.step(DT, now)) {
-    if (ev.kind === 'pop') audio.balloonPop();
+    if (ev.kind === 'pop') { if (ev.sound === 'boom') audio.explode(); else audio.balloonPop(); } // 飛彈版＝爆炸音、卡通＝啵
     else if (ev.kind === 'boom') { audio.groundBoom(); toast(ev.owner, '🎯 紅區命中！'); }
     else if (ev.kind === 'exempt') toast(ev.owner, '⛔ 地標不能打（保護）'); // 红線回饋
+    else if (ev.kind === 'cleared') { audio.missionSuccess(); for (let i = 0; i < MAX_SLOTS; i++) if (wasDriven[i]) toast(i, '🎈 氣球全打完！再來一輪'); }
     // miss：不吵（無 toast）
   }
+}
+
+/** 兩機相撞（HITL）：安全＝幽靈穿透不處罰；溫和/真實＝受損甚至爆炸（接後果軸）。 @param {number} now */
+function checkPlaneCollision(now) {
+  if (!(wasDriven[0] && wasDriven[1]) || now < planeCollideCooldown) return;
+  if (settings.mode === 'safe') return; // 安全模式：兩機照常幽靈穿透（避免兄弟互撞變吵架）
+  if (!planesColliding(states[0].pos, states[1].pos, PLANE_COLLIDE_R)) return;
+  planeCollideCooldown = now + 1500;
+  net.sendFx(0, 'bump'); net.sendFx(1, 'bump'); audio.bump();
+  for (let i = 0; i < MAX_SLOTS; i++) { toast(i, '✈️💥✈️ 兩機相撞！'); handleMishap(i); } // gentle ❤️−1 / real 冒煙→墜毀
+}
+
+/** 瞄準框（每視口一個）：空戰飛行時顯示，平常置中、鎖到目標就投影到目標螢幕位置。 @param {number} i */
+function updateReticle(i) {
+  const el = reticleEls[i];
+  if (!el) return;
+  const show = playMode === 'dogfight' && wasDriven[i] && states[i].mode === 'flying';
+  if (!show) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const tp = dogfight.targetPos(dogfight.lockId[i]);
+  if (!tp) { el.classList.remove('locked'); el.style.left = '50%'; el.style.top = '50%'; return; } // 無鎖定＝置中
+  _reticleVec.set(tp.x, tp.y, tp.z).project(cams[i].cam);
+  if (_reticleVec.z > 1) { el.classList.remove('locked'); el.style.left = '50%'; el.style.top = '50%'; return; } // 在相機後方
+  el.classList.add('locked');
+  el.style.left = `${Math.max(3, Math.min(97, (_reticleVec.x * 0.5 + 0.5) * 100))}%`;
+  el.style.top = `${Math.max(3, Math.min(97, (-_reticleVec.y * 0.5 + 0.5) * 100))}%`;
+}
+
+/** 角落小地圖：任何模式都畫友機（+空戰氣球）的方位距離。 */
+function renderMinimap() {
+  const el = $('minimap');
+  const anyDriven = wasDriven.some(Boolean);
+  el.style.display = anyDriven ? 'block' : 'none';
+  if (!anyDriven) return;
+  /** @type {{x:number,z:number,heading?:number,kind:string}[]} */
+  const blips = [];
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (wasDriven[i]) blips.push({ x: states[i].pos.x, z: states[i].pos.z, heading: states[i].heading, kind: i === 0 ? 'self' : 'ally' });
+  }
+  if (playMode === 'dogfight') for (const b of dogfight.balloons) if (b.alive) blips.push({ x: b.pos.x, z: b.pos.z, kind: 'balloon' });
+  minimap.render(/** @type {any} */ (blips));
 }
 
 let kbWasActive = false;
@@ -488,6 +540,7 @@ function loop(/** @type {number} */ now) {
       }
     }
     if (playMode === 'dogfight') updateDogfight(now); // 空戰：鎖定/發射/彈丸/命中
+    checkPlaneCollision(now); // 兩機相撞（溫和/真實受損）
     acc -= DT;
   }
   reportPState(now);
@@ -513,8 +566,13 @@ function loop(/** @type {number} */ now) {
     if (playMode === 'mission') { // 任務檢查 + 任務卡（TaskSlot）
       handleRunnerEvent(i, runner.update(i, s));
       hud.setTask(i, taskHtml(i, s));
-    } else if (playMode === 'dogfight') { // 空戰計分卡（TaskSlot）：武器 + 彈藥 + 分數（v2.0-5 做正式呈現）
-      hud.setTask(i, dogfight.hudText(i));
+    } else if (playMode === 'dogfight') { // 空戰計分卡（TaskSlot）：武器 + 彈藥 + 剩餘氣球 + 分數
+      let card = dogfight.hudText(i);
+      if (!dogfight.lockId[i]) { // 沒鎖到時給「找最近氣球」指引箭頭（HITL：要指引才找得到）
+        const g = dogfight.nearestBalloon(s);
+        if (g) card = `<span class="t-arrow" style="transform:rotate(${g.rel}rad)">⬆️</span> ${(g.distM / 1000).toFixed(1)}km　${card}`;
+      }
+      hud.setTask(i, card);
     }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
@@ -544,6 +602,10 @@ function loop(/** @type {number} */ now) {
   })), split);
 
   if (views.length > 0) vr.render(scene, views);
+
+  // 瞄準框（vr.render 後 → 相機矩陣已更新）：空戰時每視口一個，平常置中、鎖定後追瞄。
+  for (let i = 0; i < MAX_SLOTS; i++) updateReticle(i);
+  renderMinimap();
 
   if (debugOn) {
     fpsCount++; fpsTime += frame;

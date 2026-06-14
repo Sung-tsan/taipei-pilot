@@ -65,8 +65,8 @@
     }
     #statusDot { font-size: 13px; font-weight: 500; opacity: .85; }
 
-    /* 左欄：起落架（左拇指） */
-    #leftCol { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 0; }
+    /* 左欄：起落架 + context 動作鍵（左拇指；HITL：靠左下角好按）→ 整欄靠底排 */
+    #leftCol { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 10px; min-height: 0; }
     #gearBtn {
       width: 100%; max-width: 170px; min-height: 96px;
       font-size: 19px; font-weight: 800; color: #1a2233; line-height: 1.35;
@@ -225,12 +225,12 @@
     <div id="leftCol">
       <button id="gearBtn">🛬 起落架<br/><span id="gearState">已放下</span></button>
       <div id="gearHint">起飛後按它收輪，飛比較快！</div>
+      <!-- context 動作鍵 slot（喇叭/發射…）：HITL 移到左下角、靠起落架，左拇指好按。內容由 context-keys.js 注入 -->
+      <div id="ctxKeys"></div>
     </div>
     <div id="midCol">
       <canvas id="attitude" width="230" height="230"></canvas>
       <button id="calBtn">🎯 校正歸零</button>
-      <!-- context 動作鍵 slot：內容由 src/remote/context-keys.js 注入（可替換）-->
-      <div id="ctxKeys"></div>
     </div>
     <div id="thrTrack">
       <div id="thrLabel">油門</div>

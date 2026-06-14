@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { buildVoxelGeometry, voxelMaterial } from '../../voxel/build.js';
 import { balloonModel, balloonDriftPos } from '../../voxel/models/balloon.js';
+import { missileModel } from '../../voxel/models/missile.js';
 import {
   WEAPON_SPECS, acquireAirLock, groundAimPoint, canHitGround,
   spawnProjectile, stepProjectile, makeMagazine, canFire, fire, reload,
@@ -19,7 +20,8 @@ import { MAX_SLOTS } from '../../../shared/constants.js';
 export const WEAPON_ORDER = /** @type {const} */ (['cartoon', 'aa', 'ag']);
 const BALLOON_COLORS = ['#e0533d', '#3d7be0', '#f2b94b', '#5ac46b', '#b06be0'];
 const BALLOON_COUNT = 8;
-const BALLOON_RESPAWN_MS = 3000;
+const BALLOON_SCALE = 3.2;        // HITL：氣球放大才找得到（模型 ~4m × 3.2 ≈ 13m）
+const GROUND_RESPAWN_MS = 3000;   // 地面靶打掉後重生間隔
 const PROJ_COLOR = { cartoon: '#ffd84a', boom: '#ff7a33' };
 
 /** @param {number} lo @param {number} hi */
@@ -39,9 +41,10 @@ export class Dogfight {
     this.groundY = groundY;
     this.active = false;
 
-    /** @type {{id:string, mesh:THREE.Mesh, center:{x:number,y:number,z:number}, pos:{x:number,y:number,z:number}, drift:{radius:number,speed:number,axis:string,phase:number}|null, alive:boolean, respawnAt:number}[]} */
+    /** @type {{id:string, mesh:THREE.Mesh, center:{x:number,y:number,z:number}, pos:{x:number,y:number,z:number}, drift:{radius:number,speed:number,axis:string,phase:number}|null, alive:boolean}[]} */
     this.balloons = [];
-    /** @type {{proj:any, owner:number, mesh:THREE.Mesh}[]} */
+    this.balloonTotal = 0; // 本輪氣球總數（HITL：要知道剩幾顆）
+    /** @type {{proj:any, owner:number, mesh:THREE.Mesh, missile:boolean}[]} */
     this.projectiles = [];
     /** @type {{mesh:THREE.Mesh, pos:{x:number,y:number,z:number}, alive:boolean, respawnAt:number}|null} */
     this.groundTarget = null;
@@ -53,12 +56,10 @@ export class Dogfight {
     this.lockId = Array.from({ length: MAX_SLOTS }, () => null);
     this.score = Array.from({ length: MAX_SLOTS }, () => 0);
 
-    // 共用幾何/材質（彈丸小球）
+    // 共用幾何/材質：卡通彈＝小亮球；擬真飛彈＝飛彈 voxel（HITL：要像飛彈）
     this._projGeo = new THREE.SphereGeometry(3, 8, 6);
-    this._projMat = {
-      cartoon: new THREE.MeshBasicMaterial({ color: PROJ_COLOR.cartoon }),
-      boom: new THREE.MeshBasicMaterial({ color: PROJ_COLOR.boom }),
-    };
+    this._projMat = { cartoon: new THREE.MeshBasicMaterial({ color: PROJ_COLOR.cartoon }) };
+    this._missileGeo = buildVoxelGeometry(missileModel, { A: PROJ_COLOR.boom });
     /** @type {Map<string, THREE.BufferGeometry>} */
     this._balloonGeo = new Map();
   }
@@ -96,16 +97,45 @@ export class Dogfight {
     for (let i = 0; i < BALLOON_COUNT; i++) {
       const color = BALLOON_COLORS[i % BALLOON_COLORS.length];
       const mesh = new THREE.Mesh(this._balloonGeometry(color), voxelMaterial());
-      // 散佈在機場周邊空域（起飛後找得到），高度 150~350m
-      const ang = (i / BALLOON_COUNT) * Math.PI * 2 + rand(-0.3, 0.3);
-      const dist = rand(600, 1900);
-      const center = { x: Math.sin(ang) * dist, y: rand(150, 340), z: -Math.cos(ang) * dist };
+      mesh.scale.setScalar(BALLOON_SCALE); // HITL：放大才找得到
+      const center = this._randBalloonPos(i);
       const moving = i % 2 === 1; // 半數活動靶
       const drift = moving ? { radius: rand(60, 160), speed: rand(0.4, 0.9), axis: 'xz', phase: i } : null;
       mesh.position.set(center.x, center.y, center.z);
       this.scene.add(mesh);
-      this.balloons.push({ id: `b${i}`, mesh, center, pos: { ...center }, drift, alive: true, respawnAt: 0 });
+      this.balloons.push({ id: `b${i}`, mesh, center, pos: { ...center }, drift, alive: true });
     }
+    this.balloonTotal = this.balloons.length;
+  }
+
+  /** 隨機氣球位置（機場周邊空域、稍近以利尋找）。 @param {number} i @returns {{x:number,y:number,z:number}} */
+  _randBalloonPos(i) {
+    const ang = (i / BALLOON_COUNT) * Math.PI * 2 + rand(-0.3, 0.3);
+    const dist = rand(500, 1500);
+    return { x: Math.sin(ang) * dist, y: rand(160, 320), z: -Math.cos(ang) * dist };
+  }
+
+  /** 本輪存活氣球數（HITL HUD：剩幾顆） */
+  aliveBalloons() { return this.balloons.reduce((n, b) => n + (b.alive ? 1 : 0), 0); }
+
+  /**
+   * 找最近的存活氣球，回方位（相對機頭）+ 距離（指引箭頭用，HITL：要指引才找得到）。
+   * @param {{pos:{x:number,y:number,z:number}, heading:number}} plane
+   * @returns {{rel:number, distM:number}|null}
+   */
+  nearestBalloon(plane) {
+    let best = null; let bestD = Infinity;
+    for (const b of this.balloons) {
+      if (!b.alive) continue;
+      const d = Math.hypot(b.pos.x - plane.pos.x, b.pos.z - plane.pos.z);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    if (!best) return null;
+    const bearing = Math.atan2(best.pos.x - plane.pos.x, -(best.pos.z - plane.pos.z));
+    let rel = bearing - plane.heading;
+    while (rel > Math.PI) rel -= Math.PI * 2;
+    while (rel < -Math.PI) rel += Math.PI * 2;
+    return { rel, distM: bestD };
   }
 
   _spawnGroundTarget() {
@@ -145,11 +175,11 @@ export class Dogfight {
   /** 回機場補滿三種彈匣。 @param {number} slot */
   reloadAll(slot) { for (const id of WEAPON_ORDER) reload(this.mags[slot][id]); }
 
-  /** @param {number} slot HUD：武器 + 彈藥 + 分數 */
+  /** @param {number} slot HUD：武器 + 彈藥 + 剩餘氣球 + 分數（HITL：要知道剩幾顆） */
   hudText(slot) {
     const spec = this.weaponSpec(slot);
     const mag = this.mags[slot][this.weaponId(slot)];
-    return `${spec.label} ${mag.ammo}/${mag.max}　💥${this.score[slot]}`;
+    return `${spec.label} ${mag.ammo}/${mag.max}　🎈${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
   }
 
   /** 存活氣球（給鎖定用）。 @returns {{id:string,pos:{x:number,y:number,z:number}}[]} */
@@ -162,6 +192,9 @@ export class Dogfight {
     const b = this.balloons.find((x) => x.id === id);
     return b && b.alive ? b.pos : null;
   }
+
+  /** 公開：鎖定目標的世界座標（瞄準框投影用）。 @param {string|null} id */
+  targetPos(id) { return id ? this._targetPosOf(id) : null; }
 
   /**
    * 每 slot 每幀：更新鎖定（對空＝最近氣球）。回傳 lockId（HUD 用）。
@@ -199,35 +232,30 @@ export class Dogfight {
       const len = Math.hypot(dx, dy, dz) || 1;
       proj.vel = { x: (dx / len) * spec.speedMps, y: (dy / len) * spec.speedMps, z: (dz / len) * spec.speedMps };
     }
-    const mesh = new THREE.Mesh(this._projGeo, this._projMat[spec.sound]);
+    const missile = spec.sound === 'boom'; // 擬真飛彈＝飛彈外型；卡通＝亮球
+    const mesh = missile
+      ? new THREE.Mesh(this._missileGeo, voxelMaterial())
+      : new THREE.Mesh(this._projGeo, this._projMat.cartoon);
+    mesh.rotation.order = 'YXZ';
     mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
     this.scene.add(mesh);
-    this.projectiles.push({ proj, owner: slot, mesh });
+    this.projectiles.push({ proj, owner: slot, mesh, missile });
     return { fired: true, sound: spec.sound };
   }
 
   /**
-   * 推進一步：氣球漂移 + 彈丸前進 + 命中處理 + 重生。回傳本步命中事件（caller 播音/計分）。
-   * 事件 kind：pop=氣球啵、boom=紅區地面靶命中、exempt=打到地標（红線無效）、miss=對地落空。
+   * 推進一步：氣球漂移 + 彈丸前進 + 命中處理 + 整輪打完換新輪。回傳本步事件（caller 播音/計分）。
+   * 事件 kind：pop=氣球啵、boom=紅區地面靶命中、exempt=打到地標（红線無效）、miss=對地落空、cleared=整輪打完。
    * @param {number} dt @param {number} now ms
-   * @returns {{kind:'pop'|'boom'|'exempt'|'miss', owner:number, sound:'cartoon'|'boom'}[]}
+   * @returns {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared', owner:number, sound?:'cartoon'|'boom'}[]}
    */
   step(dt, now) {
     if (!this.active) return [];
-    // 1. 氣球漂移 + 重生
+    // 1. 氣球漂移（活動靶）。打掉的不個別重生——整輪打完才換新一輪（HITL：要知道射完了沒）。
     for (const b of this.balloons) {
-      if (b.alive) {
-        b.pos = b.drift ? balloonDriftPos(b.center, now / 1000, b.drift) : b.center;
-        b.mesh.position.set(b.pos.x, b.pos.y, b.pos.z);
-      } else if (now >= b.respawnAt) {
-        // 換位重生（持續有靶可打）
-        const ang = rand(0, Math.PI * 2), dist = rand(600, 1900);
-        b.center = { x: Math.sin(ang) * dist, y: rand(150, 340), z: -Math.cos(ang) * dist };
-        b.pos = { ...b.center };
-        b.alive = true;
-        b.mesh.position.set(b.pos.x, b.pos.y, b.pos.z);
-        b.mesh.visible = true;
-      }
+      if (!b.alive) continue;
+      b.pos = b.drift ? balloonDriftPos(b.center, now / 1000, b.drift) : b.center;
+      b.mesh.position.set(b.pos.x, b.pos.y, b.pos.z);
     }
     // 地面靶重生
     if (this.groundTarget && !this.groundTarget.alive && now >= this.groundTarget.respawnAt) {
@@ -235,22 +263,23 @@ export class Dogfight {
       this.groundTarget.mesh.visible = true;
     }
 
-    /** @type {{kind:'pop'|'boom'|'exempt'|'miss', owner:number, sound:'cartoon'|'boom'}[]} */
+    /** @type {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared', owner:number, sound?:'cartoon'|'boom'}[]} */
     const events = [];
     const env = { targetPosOf: (/** @type {string} */ id) => this._targetPosOf(id), groundY: this.groundY };
 
-    // 2. 彈丸前進 + 命中
+    // 2. 彈丸前進 + 朝向 + 命中
     const survivors = [];
     for (const p of this.projectiles) {
       const res = stepProjectile(p.proj, dt, env);
       p.mesh.position.set(p.proj.pos.x, p.proj.pos.y, p.proj.pos.z);
+      if (p.missile) this._orientMissile(p); // 飛彈順著速度方向
       if (res.result === 'flying') { survivors.push(p); continue; }
       if (res.result === 'hit') {
         const sound = p.proj.spec.sound;
         if (p.proj.spec.kind === 'air' && res.targetId != null) {
-          // 對空命中氣球 → 啵（去暴力）
+          // 對空命中氣球 → 啵（去暴力）；不個別重生
           const b = this.balloons.find((x) => x.id === res.targetId);
-          if (b && b.alive) { b.alive = false; b.mesh.visible = false; b.respawnAt = now + BALLOON_RESPAWN_MS; this.score[p.owner] += 1; events.push({ kind: 'pop', owner: p.owner, sound }); }
+          if (b && b.alive) { b.alive = false; b.mesh.visible = false; this.score[p.owner] += 1; events.push({ kind: 'pop', owner: p.owner, sound }); }
         } else {
           // 對地命中：红線豁免 —— 只有落在紅區內、且不在地標上才生效
           const point = { x: p.proj.pos.x, z: p.proj.pos.z };
@@ -259,7 +288,7 @@ export class Dogfight {
           if (ok && this.groundTarget && this.groundTarget.alive
               && Math.hypot(point.x - this.groundTarget.pos.x, point.z - this.groundTarget.pos.z) <= 80) {
             this.groundTarget.alive = false; this.groundTarget.mesh.visible = false;
-            this.groundTarget.respawnAt = now + BALLOON_RESPAWN_MS; this.score[p.owner] += 1;
+            this.groundTarget.respawnAt = now + GROUND_RESPAWN_MS; this.score[p.owner] += 1;
             events.push({ kind: 'boom', owner: p.owner, sound });
           } else if (onLandmark) {
             events.push({ kind: 'exempt', owner: p.owner, sound }); // 红線：打到教育地標＝無效
@@ -271,6 +300,21 @@ export class Dogfight {
       this.scene.remove(p.mesh); // hit / expired → 移除彈丸
     }
     this.projectiles = survivors;
+
+    // 3. 整輪打完 → 換新一輪（HITL：有「打完了」的明確回饋 + 永遠有靶可打）
+    if (this.balloonTotal > 0 && this.aliveBalloons() === 0) {
+      this._spawnBalloons();
+      events.push({ kind: 'cleared', owner: 0 });
+    }
     return events;
+  }
+
+  /** 把飛彈網格旋轉到順著速度方向（機鼻 -Z）。 @param {{proj:any, mesh:THREE.Mesh}} p */
+  _orientMissile(p) {
+    const v = p.proj.vel;
+    const horiz = Math.hypot(v.x, v.z) || 1e-6;
+    const hdg = Math.atan2(v.x, -v.z);     // 與飛機同制
+    const pitch = Math.atan2(v.y, horiz);
+    p.mesh.rotation.set(pitch, -hdg, 0);
   }
 }

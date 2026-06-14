@@ -23,7 +23,7 @@ Kenney low-poly 車與 voxel 飛機在同一套燈光/草地下**讀起來是同
 - [ ] 加「色票重映」一步（降飽和/偏暖對齊本款家族）——本 spike 還沒做，是最大美感缺口。
 - [ ] 定 texture 策略：ship atlas vs 烤 vertex colors（建議烤 → 與既有 voxel 同走 `MeshLambert(vertexColors)`，零貼圖）。
 - [ ] 鎖單一家族＝Kenney（本 spike 證實貼合）；同 kit 取地勤車（firetruck/van/truck/tractor 已在 Car Kit）。
-- [ ] Sung HITL：看 `out/coexist.png` 點頭 / 指出要調的點。
+- [x] **Sung HITL 給過（2026-06-14）** — 共存美感通過；v4.0 只剩「色票重映」這個 polish。
 
-## 清理
-`spike-glb/` 為拋棄式驗證；可留作 v4.0 種子，或整夾刪除（不影響遊戲，未碰 `src/`）。
+## 去留
+**保留作 v4.0 種子（Sung 2026-06-14）**。`spike-glb/` 未碰 `src/`；含 Kenney CC0 素材＋License、可重用 `normalize()`/`fitToGround()` recipe、findings 與截圖。v4.0 直接從這裡長。

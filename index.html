@@ -164,6 +164,20 @@
     @keyframes pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
     #celebrationClose { margin-top: 8px; border: none; cursor: pointer; border-radius: var(--r-md); padding: 14px 26px; font-size: 18px; font-weight: 800; background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); }
 
+    /* —— 空戰瞄準框（v2.0 HITL）：平常置中、鎖定目標後自動追瞄 —— */
+    .reticle {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: 46px; height: 46px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.45); pointer-events: none; display: none;
+      transition: left .08s linear, top .08s linear, border-color .12s;
+    }
+    .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(255,255,255,.9); }
+    .reticle.locked { border-color: #ff5a5a; box-shadow: 0 0 8px #ff5a5a99, 0 0 0 1px rgba(0,0,0,.45); }
+    .reticle.locked::after { background: #ff5a5a; }
+
+    /* —— 角落小地圖/雷達（v2.0 HITL：知道友機/敵機方位距離）—— */
+    #minimap { position: fixed; right: 14px; bottom: 14px; z-index: 9; width: 150px; height: 150px; border-radius: 50%; background: #0b0f1899; box-shadow: 0 2px 10px #0006; display: none; }
+
     /* debug 面板（?debug=1） */
     #debug { position: fixed; left: 10px; bottom: 10px; z-index: 9; font: 12px ui-monospace, monospace; color: #cfe0a8; background: #1a2233aa; padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; }
   </style>
@@ -201,6 +215,7 @@
     <div class="slot center-slot" data-slot="CenterSlot"></div>
     <div class="slot alt-band"    data-slot="AltBand"></div>
     <div class="slot home-slot"   data-slot="HomeSlot"><span class="arrow">⬆️</span><span class="home-label"></span></div>
+    <div class="reticle"></div>
   </div>
   <div class="hud-layer" id="hud-1">
     <div class="slot status-slot" data-slot="StatusSlot"></div>
@@ -209,7 +224,11 @@
     <div class="slot center-slot" data-slot="CenterSlot"></div>
     <div class="slot alt-band"    data-slot="AltBand"></div>
     <div class="slot home-slot"   data-slot="HomeSlot"><span class="arrow">⬆️</span><span class="home-label"></span></div>
+    <div class="reticle"></div>
   </div>
+
+  <!-- 角落小地圖/雷達（任何模式都顯示友機/敵機方位距離）-->
+  <canvas id="minimap" width="160" height="160"></canvas>
 
   <div id="soundHint">🔇 點一下畫面開聲音</div>
 

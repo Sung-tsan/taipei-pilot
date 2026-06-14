@@ -19,6 +19,7 @@
 > **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。**（已完成、已 tag `taipei-pilot-v1.1`）**
 > **v2.0 實作進度（2026-06-14 Opus 開發 session）**：**v2.0-1 玩法模式選單 + F-16 完成**（typecheck 0 / 156 unit / 15 e2e 全綠；`handoff/2026-06-14_v2.0-1_DONE.md` 回報）。玩法選單（free/mission/dogfight/race + 空戰子模式 + 機種）／HUD_MODES+context-keys 加 dogfight/race 佔位／F-16 voxel + **機型參數化 `plane-specs.js`（B1 機型版，T-34C 位元不變）**。**待 Sung 併 v2.0-5 雙真機 HITL**。
 > **v2.0-2 武器系統整合完成**（typecheck 0 / 246 unit / 16 e2e；`handoff/2026-06-14_v2.0-2_DONE.md`）：3 彈種（卡通/空對空/空對地）+ 對空飛近自動鎖定 + 射後不理 homing + 彈藥/冷卻/回機場補彈 + **對地紅區地標豁免红線（實測 exempt）**；接氣球靶（含活動靶）+ demo 紅區。協定加 FIRE/WEAPON_SWITCH 位元 + mode 廣播（remote 依模式換發射鍵）。**取捨（明示，非降級）：命中後果軸（玩家被打→冒煙/出局）需敵對射手 → 自然落在 v2.0-3 PvP/v2.0-4 敵機；remote 發射鍵/靶場提前做以利手感 HITL。** **武器手感 GO/NO-GO 待 Sung 雙真機。** 下一步 v2.0-3 氣球靶計分 + PvP。
+> **v2.0 空戰 HITL 修正（2026-06-14，Sung 測 v2.0-2 回報 7 點）**（typecheck 0 / 272 unit / 16 e2e；`handoff/2026-06-14_v2.0_HITL_fixes_DONE.md`）：①氣球放大×3.2+HUD 計數🎈剩/總+最近氣球指引箭頭+改有限一輪(打完 cleared 換新輪) ②**瞄準框**(置中→鎖定後投影追瞄、射程外不追) ③**飛彈外型**(missile.js voxel+順速度旋轉)+命中爆炸音(卡通維持啵) ④競速起終點→記 v2.1-1 拍板(尚未實作) ⑤手機發射/喇叭鍵移左下靠起落架 ⑥**角落小地圖**(minimap.js 北朝上、任何模式、友機+氣球方位) ⑦**兩機相撞後果**(plane-collision.js：安全幽靈穿透/溫和❤️−1/真實冒煙→墜毀，接後果軸)。瞄準框/小地圖提前自 v2.0-5。待 Sung 複驗後回 v2.0-3 PvP。
 >
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**
 
@@ -102,7 +103,7 @@
 | 子版本 | 內容 |
 |---|---|
 | **v2.0** | **玩法模式框架（模式選單）＋空戰模式 ＋ 武器系統**：co-op PvE 與 PvP 皆可選；後果軸控嚴重度（另開 spec） |
-| **v2.1** | **競爭任務賽模式**：誰先到/誰先穿完航線，插進已建好的模式框架 |
+| **v2.1** | **競爭任務賽模式**：誰先到/誰先穿完航線，插進已建好的模式框架（**HITL 2026-06-14 拍板：競速必須有明確起點/終點，或「先到 A 點再到 B 點」的清楚指引——不然玩家不知道要從哪飛到哪**；race.js 已備兩型，缺的是 UI 起終點/航點指引） |
 
 **v2.0 武器系統**（武器型態＝對應 tone ladder × 後果軸的光譜）：
 
@@ -285,7 +286,7 @@
 | 滑行道網路 | airspace.json 怎麼描述滑行道圖/gate；pushback 倒退引導怎麼操作（6 歲友善） | V4 |
 | A→B 全圖抽象 | 跨海 300km 不可實渲染 → 台灣全圖 + 時間壓縮 + 近場 zoom；同時當地理學習地圖 | V5 |
 | 塔台語音生成 | grounded ATC voice：server API + grounded 三件套 + 逾時 fallback 文字 | V5 |
-| 素材正規化 spike | **✅ 已提前跑（2026-06-14，`spike-glb/FINDINGS.md`）**：Kenney CC0 Car Kit × voxel **共存成立**；scale＝量 bbox→公尺（逐型別）、材質 Lambert+flat 近乎免費、**色票重映是主槓桿**、Kenney GLB 需 ship 外部 colormap。v4.0 沿用此 recipe 正式化（補色票重映 + Sung HITL） | v4.0 接手 |
+| 素材正規化 spike | **✅ 已提前跑（2026-06-14，`spike-glb/FINDINGS.md`）**：Kenney CC0 Car Kit × voxel **共存成立**；scale＝量 bbox→公尺（逐型別）、材質 Lambert+flat 近乎免費、**色票重映是主槓桿**、Kenney GLB 需 ship 外部 colormap。**Sung HITL 給過（2026-06-14）**；v4.0 沿用此 recipe、只剩補色票重映。`spike-glb/` 留作種子 | v4.0 接手 |
 | 公開部署 | 雙裝置 LAN relay 對陌生爸爸的部署門檻（束 D） | Later |
 
 ---
@@ -331,7 +332,7 @@
 - **材質**：剝貼圖/PBR → flat/Lambert（與現有一致）。
 - **色票**：重映到本款色票家族（暖、低對比）。
 - **細節密度＋scale/朝向**：挑偏方塊/低面數素材；過平滑高面數曲面件擺粗 voxel 旁仍違和，避開。
-- **此 spike 已於 2026-06-14 提前跑**（`spike-glb/`，findings：`spike-glb/FINDINGS.md`，截圖 `out/coexist.png`）：Kenney CC0 Car Kit × voxel **共存成立**；材質 Lambert+flat 近乎免費、**色票重映（降飽和/偏暖）是主槓桿**、scale＝量 bbox→公尺逐型別。v4.0 沿用 `normalize()`/`fitToGround()` recipe 正式化（待補色票重映 + Sung HITL）。
+- **此 spike 已於 2026-06-14 提前跑**（`spike-glb/`，findings：`spike-glb/FINDINGS.md`，截圖 `out/coexist.png`）：Kenney CC0 Car Kit × voxel **共存成立**；材質 Lambert+flat 近乎免費、**色票重映（降飽和/偏暖）是主槓桿**、scale＝量 bbox→公尺逐型別。v4.0 沿用 `normalize()`/`fitToGround()` recipe 正式化（**Sung HITL 給過 2026-06-14**；只剩補色票重映）。`spike-glb/` 保留作 v4.0 種子。
 
 ### 11.3 時機 — 共存即可從現在生效（無遷移成本）
 - 既然可共存，**不需 V4 大遷移、也不需「V2/V3 先憋 voxel」**。gate 從現在按**逐件成本**判：通用件查 CC0、bespoke 與 trivial 小件（如氣球靶）voxel 手刻仍可能更便宜。

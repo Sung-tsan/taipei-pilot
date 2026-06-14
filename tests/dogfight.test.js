@@ -111,6 +111,45 @@ describe('Dogfight 整合', () => {
     expect(df.score[0]).toBe(1);
   });
 
+  it('氣球有限計數：打完整輪 → cleared 事件 + 換新一輪（HITL：知道射完了沒）', () => {
+    expect(df.balloonTotal).toBe(df.balloons.length);
+    // 只留 b0 存活，其餘標死 → 打掉 b0 即整輪清空
+    df.balloons.forEach((b, i) => { if (i !== 0) b.alive = false; });
+    const plane = { pos: { x: 0, y: 200, z: 0 }, heading: 0 };
+    isolateBalloon(df, { x: 0, y: 200, z: -300 }); // b0 正前方（會把其他設遠但 alive）
+    df.balloons.forEach((b, i) => { if (i !== 0) b.alive = false; }); // 再次只留 b0
+    df.updateLock(0, plane);
+    df.tryFire(0, plane, 1000);
+    let cleared = false;
+    let now = 1000 + DT * 1000;
+    for (let t = 0; t < 4000; t += DT * 1000) {
+      const evs = df.step(DT, now);
+      if (evs.some((e) => e.kind === 'cleared')) { cleared = true; break; }
+      now += DT * 1000;
+    }
+    expect(cleared).toBe(true);
+    expect(df.aliveBalloons()).toBe(df.balloonTotal); // 換了新一輪
+  });
+
+  it('擬真飛彈（aa/ag）發射 → 彈丸是飛彈外型（missile=true）；卡通＝非飛彈', () => {
+    const plane = { pos: { x: 0, y: 200, z: 0 }, heading: 0 };
+    df.tryFire(0, plane, 0); // cartoon
+    expect(df.projectiles.at(-1)?.missile).toBe(false);
+    df.cycleWeapon(0); // → aa（boom）
+    df.tryFire(0, plane, 2000);
+    expect(df.projectiles.at(-1)?.missile).toBe(true);
+  });
+
+  it('nearestBalloon：回最近存活氣球的相對方位 + 距離（指引箭頭用）', () => {
+    const plane = { pos: { x: 0, y: 200, z: 0 }, heading: 0 };
+    isolateBalloon(df, { x: 0, y: 200, z: -300 });
+    df.balloons.forEach((b, i) => { if (i !== 0) b.alive = false; });
+    const g = df.nearestBalloon(plane);
+    expect(g).not.toBeNull();
+    expect(Math.abs(/** @type {any} */ (g).rel)).toBeLessThan(0.01); // 正前方 → rel≈0
+    expect(/** @type {any} */ (g).distM).toBeCloseTo(300, 0);
+  });
+
   it('setActive(false)：清空靶場與彈丸', () => {
     df.setActive(false);
     expect(df.balloons.length).toBe(0);
