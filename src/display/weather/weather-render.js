@@ -17,6 +17,8 @@ const LOOK = {
 const RAIN_N = 1400;
 const RAIN_SPAN = { x: 700, y: 520, z: 700 };
 const RAIN_FALL = 240; // m/s
+/** 日夜中性參數（白天，不 modulate）；apply 第二參數缺省用它 */
+const DAY_NEUTRAL = { sunMul: 1, hemiMul: 1, sunColor: '#fff2dc', skyTint: '#bfe0ef', tintAmt: 0 };
 
 export class WeatherRenderer {
   /** @param {THREE.Scene} scene world.js 的 scene */
@@ -60,17 +62,24 @@ export class WeatherRenderer {
     return rain;
   }
 
-  /** 套用天氣型別到場景（fog/光/天空/雲/雨）。 @param {string} type */
-  apply(type) {
+  /**
+   * 套用天氣 + 日夜（compose 在一次呼叫，避免重複套用累乘）。
+   * @param {string} type 天氣型別
+   * @param {{sunMul:number,hemiMul:number,sunColor:string,skyTint:string,tintAmt:number}} [day] 日夜參數（缺＝白天中性）
+   */
+  apply(type, day = DAY_NEUTRAL) {
     const L = LOOK[type] ?? LOOK.clear;
     this.type = type;
-    if (this.fog) { this.fog.near = L.near; this.fog.far = L.far; this.fog.color.set(L.color); }
+    // 天色＝weather 霧色 混入 日夜天色（夜＝深藍）
+    const skyCol = new THREE.Color(L.color).lerp(new THREE.Color(day.skyTint), day.tintAmt);
+    if (this.fog) { this.fog.near = L.near; this.fog.far = L.far; this.fog.color.copy(skyCol); }
     const bg = /** @type {any} */ (this.scene.background);
-    if (bg && bg.set) bg.set(L.color); // 背景＝霧色（遠處乾淨融掉）
-    if (this.sun) this.sun.intensity = this.baseSun * L.light;
-    if (this.hemi) this.hemi.intensity = this.baseHemi * L.light;
+    if (bg && bg.copy) bg.copy(skyCol);
+    if (this.sun) { this.sun.intensity = this.baseSun * L.light * day.sunMul; this.sun.color.set(day.sunColor); }
+    if (this.hemi) this.hemi.intensity = this.baseHemi * L.light * day.hemiMul;
     if (this.clouds) this.clouds.visible = L.clouds;
-    if (this.skydome) /** @type {THREE.MeshBasicMaterial} */ (this.skydome.material).color.setScalar(L.dome); // 染灰（×vertex colors）
+    // 天空圓頂：weather 染灰 × 日夜天色（夜壓暗變藍）
+    if (this.skydome) /** @type {THREE.MeshBasicMaterial} */ (this.skydome.material).color.copy(skyCol).multiplyScalar(L.dome);
     this.rain.visible = type === 'rain';
   }
 

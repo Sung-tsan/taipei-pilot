@@ -7,7 +7,9 @@ import { KeyboardInput } from './input/keyboard.js';
 import { makeWorld } from './scene/world.js';
 import { WeatherRenderer } from './weather/weather-render.js';
 import { makeWeather, rollWeather, weatherProfile, weatherForces, DEFAULT_AIRPORT } from './weather/weather.js';
+import { makeDayNight, dayNightParams, TIMES_OF_DAY } from './weather/daynight.js';
 import { crosswindDamagePct, turbulenceDamagePct } from './flight/wind-damage.js';
+import { AirportLife } from './scene/airport-life.js';
 import { spawnPose, RUNWAY_DIR } from './scene/airport.js';
 import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
@@ -102,15 +104,23 @@ const aiResults = [];
 const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
 let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
 
-// —— 天氣（v3.0-1）：modulate world.js + 後果軸閘（安全恆晴/溫和溫和/真實全開）——
+// —— 天氣（v3.0-1）+ 生活感/日夜（v3.0-3）：modulate world.js + 後果軸閘 ——
 const weatherRenderer = new WeatherRenderer(scene);
 const weather = makeWeather();
-/** 依機場 profile + 後果模式 roll 天氣並套用（進場/換模式時呼叫）。 */
+const airportLife = new AirportLife(scene);   // 停機坪飛機/燈/窗光/風向袋/雷達/車（merged/instanced）
+const dayNight = makeDayNight();               // 日夜時段（開場可選；純氛圍）
+/** 套用天氣 × 日夜到場景（compose 一次；天氣 roll、換時段、換後果模式都呼叫）。 */
+function applyEnv() {
+  const dp = dayNightParams(dayNight.time);
+  weatherRenderer.apply(weather.type, dp);     // fog/光/天空/雲/雨 + 日夜疊色
+  airportLife.setNight(dp.nightLights);        // 夜/黃昏 → 跑道燈/窗光/停機坪燈亮
+}
+/** 依機場 profile + 後果模式 roll 天氣，再 compose 套用。 */
 function rollAndApplyWeather() {
   weather.type = rollWeather(weatherProfile(DEFAULT_AIRPORT), settings.mode);
-  weatherRenderer.apply(weather.type);
+  applyEnv();
 }
-rollAndApplyWeather(); // 開場先 roll 一次（依目前後果模式）
+rollAndApplyWeather(); // 開場先 roll 一次（依目前後果模式 + 時段）
 
 // —— 側風/亂流（v3.0-2，只真實模式）：wind 由 weather 強度×固定風向；gust 由時間平滑噪音 ——
 const WIND_FROM_DEG = 20; // 風從 NNE 來（吹向 ~200°），給跑道 10/28 一點側風（HITL 可調）
@@ -138,7 +148,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyC') return;
   const order = ['clear', 'cloudy', 'rain', 'fog'];
   weather.type = order[(order.indexOf(weather.type) + 1) % order.length];
-  weatherRenderer.apply(weather.type);
+  applyEnv();
 });
 
 // —— 競速（v2.1-1）：兩型（穿圈航線 / 地標衝刺）+ 起點/終點視覺（HITL #4）——
@@ -291,6 +301,9 @@ function renderSettingsUI() {
   for (const b of document.querySelectorAll('#shakeRow .set-opt')) {
     b.classList.toggle('active', b.getAttribute('data-shake') === (settings.camShake ? '1' : '0'));
   }
+  for (const b of document.querySelectorAll('#timeRow .set-opt')) {
+    b.classList.toggle('active', b.getAttribute('data-time') === dayNight.time);
+  }
 }
 $('settingsBtn').addEventListener('click', () => { renderSettingsUI(); settingsEl.classList.remove('hidden'); });
 $('settingsClose').addEventListener('click', () => settingsEl.classList.add('hidden'));
@@ -314,6 +327,12 @@ for (const b of document.querySelectorAll('#shakeRow .set-opt')) {
   b.addEventListener('click', () => { // 亂流鏡頭晃動開關（減暈）
     settings.camShake = b.getAttribute('data-shake') === '1';
     saveSettings(localStorage, settings); renderSettingsUI();
+  });
+}
+for (const b of document.querySelectorAll('#timeRow .set-opt')) {
+  b.addEventListener('click', () => { // 日夜時段（純氛圍）
+    const t = b.getAttribute('data-time');
+    if (t) { dayNight.time = t; applyEnv(); renderSettingsUI(); }
   });
 }
 renderSettingsUI();
@@ -865,6 +884,7 @@ function loop(/** @type {number} */ now) {
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
+  airportLife.update(frame, (WIND_FROM_DEG * Math.PI) / 180, weatherForces(weather.type).windSpeed); // 雷達轉 + 風向袋對風
 
   if (debugOn) {
     fpsCount++; fpsTime += frame;
@@ -891,10 +911,13 @@ requestAnimationFrame(loop);
   get race() { return race; },
   raceMarkers, // v2.1-1 e2e：戳賽道標記數
   get weather() { return weather.type; }, // v3.0-1 e2e/dev
-  setWeather: (/** @type {string} */ t) => { weather.type = t; weatherRenderer.apply(t); },
+  setWeather: (/** @type {string} */ t) => { weather.type = t; applyEnv(); },
   rollWeather: () => { rollAndApplyWeather(); return weather.type; },
   weatherRenderer, // e2e：驗 fog 被天氣 modulate
   lastInputs, // v3.0-2 e2e：驗側風 wind 有餵進輸入
+  get timeOfDay() { return dayNight.time; }, // v3.0-3 e2e/dev
+  setTimeOfDay: (/** @type {string} */ t) => { if (TIMES_OF_DAY.includes(/** @type {any} */ (t))) { dayNight.time = t; applyEnv(); } },
+  airportLife, // e2e：驗夜燈/擺件
   setPlayMode: (/** @type {string} */ m) => applyPlayMode(m),
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),

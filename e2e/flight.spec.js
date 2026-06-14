@@ -285,6 +285,34 @@ test('側風/亂流：真實模式+雨 → 側風進輸入；鏡頭晃動可關'
   await ctx.close();
 });
 
+// v3.0-3：生活感擺件 + 日夜——夜晚夜燈亮；perf GO/NO-GO：單視口 draws < 300。
+test('生活感/日夜：夜燈可開、draws < 300（perf GO/NO-GO）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 鍵盤起飛 → 有視口在渲染（draws 才有值）
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+
+  // perf GO/NO-GO：擺件全 merged/instanced → 單視口 draw calls < 300
+  await expect.poll(() => display.evaluate(() => /** @type {any} */ (window).__tp.drawCalls)).toBeGreaterThan(0);
+  const draws = await display.evaluate(() => /** @type {any} */ (window).__tp.drawCalls);
+  expect(draws).toBeLessThan(300);
+
+  // 切夜晚 → 時段＝night、夜燈亮（純氛圍）
+  await display.click('#settingsBtn');
+  await display.click('#timeRow [data-time="night"]');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.timeOfDay)).toBe('night');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.airportLife.nightLights.visible)).toBe(true);
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {
