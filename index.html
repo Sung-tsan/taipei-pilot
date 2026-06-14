@@ -43,17 +43,20 @@
     #splitLine { position: fixed; top: 0; bottom: 0; left: calc(50vw - 1px); width: 2px; background: var(--ui-bg); z-index: 4; display: none; }
 
     /* 角落小 QR（還有空位時） */
-    #miniQr { position: fixed; right: 18px; bottom: 18px; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px; background: #222b44cc; padding: 12px; border-radius: var(--r-md); }
+    /* bottom: 178px＝疊在右下角小地圖(#minimap 150px)上方，不互相覆蓋 */
+    #miniQr { position: fixed; right: 18px; bottom: 178px; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px; background: #222b44cc; padding: 12px; border-radius: var(--r-md); }
     #miniQr.show { display: flex; }
     #miniQr span { font-size: 12px; opacity: .8; }
     #miniQr canvas { width: 110px !important; height: 110px !important; border-radius: 8px; }
 
     /* 斷線等待提示（每 slot） */
+    /* 斷線盤旋提示：移到上方置中帶（讓開左上 #topBtns / StatusSlot 控制叢，不再互疊）。兩機各一列堆疊。*/
     .lostBadge {
-      position: fixed; top: 18px; padding: 10px 18px; border-radius: var(--r-md);
+      position: fixed; top: 66px; left: 50%; transform: translateX(-50%);
+      padding: 10px 18px; border-radius: var(--r-md);
       background: #222b44dd; font-size: 16px; z-index: 7; display: none;
     }
-    #lost0 { left: 18px; } #lost1 { right: 18px; }
+    #lost1 { top: 112px; }
 
     /* ========================================================================
        HUD 6 槽位框架（UI 層的 B1）—— 每視口一層 hud-layer，內含固定槽位。

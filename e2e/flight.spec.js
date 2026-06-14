@@ -60,8 +60,33 @@ test('手機連線 + 注入輸入 → 該機起飛；斷線 → 空中盤旋', a
     { timeout: 15000 },
   ).toBe('orbit');
   await expect(display.locator('#lost0')).toBeVisible();
+  // HITL overlap regression：斷線盤旋提示不可疊到左上控制列 #topBtns
+  const lostOverlap = await display.evaluate(() => {
+    const a = /** @type {Element} */ (document.querySelector('#lost0')).getBoundingClientRect();
+    const b = /** @type {Element} */ (document.querySelector('#topBtns')).getBoundingClientRect();
+    return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+  });
+  expect(lostOverlap).toBe(false);
 
   await displayCtx.close();
+});
+
+// HITL overlap regression：右下角小地圖不可疊到「掃第二支」QR（v2.0-4 後同在右下角 → 曾互疊）。
+test('小地圖與掃碼面板不重疊（角落 overlap regression）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.keyboard.down('Space'); // 鍵盤駕駛紅機 → anyDriven + 有空位 → 小地圖 + miniQr 同時顯示
+  await expect(display.locator('#minimap')).toBeVisible();
+  await expect(display.locator('#miniQr')).toBeVisible();
+  const overlap = await display.evaluate(() => {
+    const a = /** @type {Element} */ (document.querySelector('#minimap')).getBoundingClientRect();
+    const b = /** @type {Element} */ (document.querySelector('#miniQr')).getBoundingClientRect();
+    return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+  });
+  expect(overlap).toBe(false);
+  await display.keyboard.up('Space');
+  await ctx.close();
 });
 
 // v2.0-1：玩法選單切 free↔dogfight↔race（HUD 契約跟著切）+ 選 F-16 起飛（噴射機手感）。
