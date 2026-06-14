@@ -104,6 +104,8 @@ const aiResults = [];
 const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
 let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
 
+const audio = new GameAudio(); // 音效（先建好，applyEnv 要呼叫 setWeather；ensure() 在第一次 gesture 才出聲）
+
 // —— 天氣（v3.0-1）+ 生活感/日夜（v3.0-3）：modulate world.js + 後果軸閘 ——
 const weatherRenderer = new WeatherRenderer(scene);
 const weather = makeWeather();
@@ -114,11 +116,37 @@ function applyEnv() {
   const dp = dayNightParams(dayNight.time);
   weatherRenderer.apply(weather.type, dp);     // fog/光/天空/雲/雨 + 日夜疊色
   airportLife.setNight(dp.nightLights);        // 夜/黃昏 → 跑道燈/窗光/停機坪燈亮
+  audio.setWeather(weather.type, dp.nightLights); // 天氣音效（雨聲/側風底/夜底噪）
 }
-/** 依機場 profile + 後果模式 roll 天氣，再 compose 套用。 */
+let ambientWeather = 'clear'; // 環境 roll 出的天氣（天氣挑戰任務會覆寫顯示，任務結束回環境）
+let missionForcedWeather = /** @type {string|null} */ (null); // 上一幀天氣任務覆寫值（用來偵測「剛離開」）
+/** 依機場 profile + 後果模式 roll 環境天氣，再 compose 套用。 */
 function rollAndApplyWeather() {
-  weather.type = rollWeather(weatherProfile(DEFAULT_AIRPORT), settings.mode);
+  ambientWeather = rollWeather(weatherProfile(DEFAULT_AIRPORT), settings.mode);
+  weather.type = ambientWeather;
+  missionForcedWeather = null;
   applyEnv();
+}
+/**
+ * 天氣挑戰任務進場 → 覆寫成指定天氣（v3.0-4「兩者都要」第二半）；任務結束 → 回環境。每幀呼叫。
+ * 只在「有任務要求且與現值不同」或「剛離開天氣任務」時重套——不主動覆蓋手動/預覽天氣（C 鍵/dev）。
+ */
+function refreshMissionWeather() {
+  let forced = null;
+  if (playMode === 'mission') {
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const m = wasDriven[i] ? runner.current[i] : null;
+      if (m && m.weatherRequirement) { forced = m.weatherRequirement; break; }
+    }
+  }
+  if (forced) {
+    if (forced !== weather.type) { weather.type = forced; applyEnv(); }
+    missionForcedWeather = forced;
+  } else if (missionForcedWeather !== null) { // 剛離開天氣任務 → 回環境天氣
+    missionForcedWeather = null;
+    weather.type = ambientWeather;
+    applyEnv();
+  } // 否則：無任務天氣、也沒剛離開 → 不動（讓 roll/設定/C 預覽主導）
 }
 rollAndApplyWeather(); // 開場先 roll 一次（依目前後果模式 + 時段）
 
@@ -272,8 +300,7 @@ net.onSlotChange = refreshDrivers;
 net.connect();
 refreshDrivers();
 
-// —— 音效（瀏覽器規定：第一次 gesture 才出聲） ——
-const audio = new GameAudio();
+// —— 音效（瀏覽器規定：第一次 gesture 才出聲）——（audio 實例在天氣區塊前已建）
 function enableAudio() {
   audio.ensure();
   $('soundHint').style.display = audio.enabled ? 'none' : 'block';
@@ -885,6 +912,7 @@ function loop(/** @type {number} */ now) {
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
   airportLife.update(frame, (WIND_FROM_DEG * Math.PI) / 180, weatherForces(weather.type).windSpeed); // 雷達轉 + 風向袋對風
+  refreshMissionWeather(); // 天氣挑戰任務覆寫天氣（只在變更時重套）
 
   if (debugOn) {
     fpsCount++; fpsTime += frame;

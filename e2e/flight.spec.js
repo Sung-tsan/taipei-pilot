@@ -313,6 +313,33 @@ test('生活感/日夜：夜燈可開、draws < 300（perf GO/NO-GO）', async (
   await ctx.close();
 });
 
+// v3.0-4：天氣挑戰任務——當前任務帶 weatherRequirement → 覆寫天氣；任務結束回環境天氣。
+test('天氣挑戰任務：當前任務 weatherRequirement → 覆寫天氣、結束回環境', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 鍵盤駕駛紅機（預設任務模式）→ 有 driven slot
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+
+  // 注入「霧中降落」天氣挑戰任務為當前任務 → 天氣覆寫成霧
+  await display.evaluate(() => {
+    /** @type {any} */ (window).__tp.runner.current[0] = { id: 'wx', type: 'takeoff_landing', weatherRequirement: 'fog', prompt: { text: '霧', draft: true } };
+  });
+  await expect.poll(() => display.evaluate(() => /** @type {any} */ (window).__tp.weather)).toBe('fog');
+
+  // 任務結束（清當前）→ 回環境天氣（預設安全模式＝晴）
+  await display.evaluate(() => { /** @type {any} */ (window).__tp.runner.current[0] = null; });
+  await expect.poll(() => display.evaluate(() => /** @type {any} */ (window).__tp.weather)).toBe('clear');
+  await display.keyboard.up('Space');
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

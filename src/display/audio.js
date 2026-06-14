@@ -53,7 +53,41 @@ export class GameAudio {
     noise.connect(bp).connect(this.windGain).connect(ctx.destination);
     noise.start();
 
+    // 雨聲 loop（白噪音 + 高帶通＝細密雨絲；天氣＝雨時開）
+    const rnoise = ctx.createBufferSource();
+    rnoise.buffer = buf; rnoise.loop = true;
+    const rbp = ctx.createBiquadFilter();
+    rbp.type = 'bandpass'; rbp.frequency.value = 4200; rbp.Q.value = 0.5;
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = 0;
+    rnoise.connect(rbp).connect(this.rainGain).connect(ctx.destination);
+    rnoise.start();
+
+    // 夜間環境底噪（極低頻嗡＋蟲鳴感；夜/黃昏淡淡墊著）
+    const namb = ctx.createBufferSource();
+    namb.buffer = buf; namb.loop = true;
+    const nbp = ctx.createBiquadFilter();
+    nbp.type = 'bandpass'; nbp.frequency.value = 2600; nbp.Q.value = 1.2;
+    this.nightGain = ctx.createGain();
+    this.nightGain.gain.value = 0;
+    namb.connect(nbp).connect(this.nightGain).connect(ctx.destination);
+    namb.start();
+
     this.enabled = true;
+    if (this._pendingWeather) this.setWeather(this._pendingWeather.type, this._pendingWeather.night); // 補套用
+  }
+
+  /**
+   * 天氣/日夜環境音（hybrid 合成）：雨聲、側風加強、霧悶（雨聲變鈍）、夜底噪。
+   * @param {string} type 天氣型別 @param {boolean} [night] 夜/黃昏
+   */
+  setWeather(type, night = false) {
+    if (!this.ctx || !this.enabled) { this._pendingWeather = { type, night }; return; }
+    const t = this.ctx.currentTime;
+    this.rainGain?.gain.setTargetAtTime(type === 'rain' ? 0.12 : 0, t, 0.4);
+    this.nightGain?.gain.setTargetAtTime(night ? 0.018 : 0, t, 0.8);
+    // 側風強度→額外風聲底（雨>霧/雲>晴）；霧＝悶（風聲底拉低一點）
+    this._weatherWind = type === 'rain' ? 0.05 : type === 'fog' ? 0.02 : type === 'cloudy' ? 0.03 : 0;
   }
 
   /**
@@ -75,7 +109,7 @@ export class GameAudio {
       e.pan.pan.setTargetAtTime(split ? (i === 0 ? -0.55 : 0.55) : 0, t, 0.2);
       if (on && p.flying) maxSpeed = Math.max(maxSpeed, p.speed);
     });
-    this.windGain?.gain.setTargetAtTime((maxSpeed / 65) * 0.06, t, 0.3);
+    this.windGain?.gain.setTargetAtTime((maxSpeed / 65) * 0.06 + (this._weatherWind ?? 0), t, 0.3); // +天氣側風底
   }
 
   /** 撞擊悶響 */
