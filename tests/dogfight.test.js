@@ -185,6 +185,61 @@ describe('Dogfight 整合', () => {
     expect(df.hitRate(0)).toBe(0);
   });
 
+  it('ai_1v1 / ai_2v2：spawn 對應架數敵機、清氣球', () => {
+    df.setMode('ai_1v1');
+    expect(df.enemies.length).toBe(1);
+    expect(df.balloonTotal).toBe(0);
+    df.setMode('ai_2v2');
+    expect(df.enemies.length).toBe(2);
+  });
+
+  it('敵機 1v1：玩家持續射擊 → 擊落敵機（enemyDown + win + 計分）', () => {
+    df.setMode('ai_1v1');
+    df.setDifficulty(0, 1); // 最易：敵機最鈍
+    const plane = { pos: { x: 0, y: 200, z: 0 }, heading: 0 };
+    df.enemies[0].state.pos = { x: 0, y: 200, z: -300 }; // 正前方
+    df.setPlayers([{ slot: 0, pos: plane.pos, alive: true }]);
+    expect(df.updateLock(0, plane)).toBe('e0');
+    let down = false, win = false, now = 1000;
+    for (let t = 0; t < 6000; t += DT * 1000) {
+      df.setPlayers([{ slot: 0, pos: plane.pos, alive: true }]);
+      df.updateLock(0, plane); df.tryFire(0, plane, now);
+      const evs = df.step(DT, now);
+      if (evs.some((e) => e.kind === 'enemyDown')) down = true;
+      if (evs.some((e) => e.kind === 'win')) win = true;
+      if (down && win) break;
+      now += DT * 1000;
+    }
+    expect(down).toBe(true);
+    expect(win).toBe(true);
+    expect(df.kills[0]).toBe(1);
+    expect(df.aliveEnemies()).toBe(0);
+  });
+
+  it('敵機開火 → enemyHitPlayer（命中後果由 main 套用）', () => {
+    df.setMode('ai_1v1');
+    df.setDifficulty(1, 0); // 最強：積極開火
+    const ppos = { x: 0, y: 200, z: 0 };
+    df.enemies[0].state.pos = { x: 0, y: 200, z: 200 }; // 玩家正後方近距、朝北對著玩家
+    df.enemies[0].state.heading = 0;
+    let hit = false, now = 0;
+    for (let t = 0; t < 6000; t += DT * 1000) {
+      df.setPlayers([{ slot: 0, pos: ppos, alive: true }]);
+      const evs = df.step(DT, now);
+      if (evs.some((e) => e.kind === 'enemyHitPlayer' && e.victim === 0)) { hit = true; break; }
+      now += DT * 1000;
+    }
+    expect(hit).toBe(true);
+  });
+
+  it('spawnWave：全滅後重生新一波', () => {
+    df.setMode('ai_1v1');
+    df.enemies[0].alive = false;
+    expect(df.aliveEnemies()).toBe(0);
+    df.spawnWave();
+    expect(df.aliveEnemies()).toBe(1);
+  });
+
   it('setActive(false)：清空靶場與彈丸', () => {
     df.setActive(false);
     expect(df.balloons.length).toBe(0);

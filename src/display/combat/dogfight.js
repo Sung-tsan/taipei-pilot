@@ -14,6 +14,10 @@ import {
   WEAPON_SPECS, acquireAirLock, groundAimPoint, canHitGround,
   spawnProjectile, stepProjectile, makeMagazine, canFire, fire, reload,
 } from './weapons.js';
+import { decideInput, shouldFire } from './enemy-ai.js';
+import { PlaneEntity } from '../planes/plane-entity.js';
+import { makePlane, stepPlane } from '../flight/flight-model.js';
+import { flightParams, planeSpec } from '../planes/plane-specs.js';
 import { MAX_SLOTS } from '../../../shared/constants.js';
 
 /** 武器循環順序（換武器鍵照此循環） */
@@ -22,7 +26,9 @@ const BALLOON_COLORS = ['#e0533d', '#3d7be0', '#f2b94b', '#5ac46b', '#b06be0'];
 const BALLOON_COUNT = 8;
 const BALLOON_SCALE = 3.2;        // HITL：氣球放大才找得到（模型 ~4m × 3.2 ≈ 13m）
 const GROUND_RESPAWN_MS = 3000;   // 地面靶打掉後重生間隔
-const PROJ_COLOR = { cartoon: '#ffd84a', boom: '#ff7a33' };
+const PROJ_COLOR = { cartoon: '#ffd84a', boom: '#ff7a33', enemy: '#ff4d4d' };
+const ENEMY_ACCENT = '#3a4250';   // 敵機機身色（暗灰，與紅/藍友機區隔）
+const ENEMY_WEAPON = WEAPON_SPECS.cartoon; // 敵機用卡通彈（命中＝冒煙暫退，6 歲友善）
 
 /** @param {number} lo @param {number} hi */
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
@@ -32,21 +38,23 @@ export class Dogfight {
    * @param {THREE.Scene} scene
    * @param {{ landmarks?:{x:number,z:number,r:number}[],
    *           redZones?:{x:number,z:number,r:number}[],
-   *           groundY?:(x:number,z:number)=>number }} [cfg]
+   *           groundY?:(x:number,z:number)=>number,
+   *           env?:import('../flight/flight-model.js').Env|null }} [cfg]
    */
-  constructor(scene, { landmarks = [], redZones = [], groundY = () => 0 } = {}) {
+  constructor(scene, { landmarks = [], redZones = [], groundY = () => 0, env = null } = {}) {
     this.scene = scene;
     this.landmarks = landmarks;     // [{x,z,r}] 红線豁免（命中地標無效）
     this.redZones = redZones;       // [{x,z,r}] 對地可命中區
     this.groundY = groundY;
+    this.env = env || { groundY, canLandHere: () => false, inLowFlyZone: () => true }; // 敵機飛行用 Env
     this.active = false;
 
     /** @type {{id:string, mesh:THREE.Mesh, center:{x:number,y:number,z:number}, pos:{x:number,y:number,z:number}, drift:{radius:number,speed:number,axis:string,phase:number}|null, alive:boolean}[]} */
     this.balloons = [];
     this.balloonTotal = 0; // 本輪氣球總數（HITL：要知道剩幾顆）
-    /** @type {{proj:any, owner:number, mesh:THREE.Mesh, missile:boolean}[]} */
+    /** @type {{proj:any, owner:number, mesh:THREE.Mesh, missile:boolean, fromEnemy:boolean}[]} */
     this.projectiles = [];
-    /** @type {{mesh:THREE.Mesh, pos:{x:number,y:number,z:number}, alive:boolean, respawnAt:number}|null} */
+    /** @type {{mesh:THREE.Mesh, disc?:THREE.Mesh, pos:{x:number,y:number,z:number}, alive:boolean, respawnAt:number}|null} */
     this.groundTarget = null;
 
     // 每 slot 武器狀態
@@ -61,12 +69,22 @@ export class Dogfight {
 
     // PvP：dogfightMode==='pvp' 才開玩家互打；否則兩機幽靈穿透（不互鎖、不互傷）。
     this.pvp = false;
+    this.dfMode = 'balloons'; // balloons / pvp / ai_1v1 / ai_2v2
     /** @type {{slot:number, pos:{x:number,y:number,z:number}, alive:boolean}[]} 每幀由 main 餵入的可命中玩家 */
     this.players = [];
+
+    // 敵機 AI（ai_1v1 / ai_2v2）：難度由 main 依局數+adaptive 餵入。
+    /** @type {{id:string, state:any, entity:PlaneEntity, mag:any, alive:boolean}[]} */
+    this.enemies = [];
+    this.difficulty = 0.3; // 0..1（難度曲線，main 餵）
+    this.handicap = 0.4;   // 0..1（adaptive 放水，main 餵）
+    this._f16 = flightParams('f16'); // 敵機飛行手感（噴射機）
 
     // 共用幾何/材質：卡通彈＝小亮球；擬真飛彈＝飛彈 voxel（HITL：要像飛彈）
     this._projGeo = new THREE.SphereGeometry(3, 8, 6);
     this._projMat = { cartoon: new THREE.MeshBasicMaterial({ color: PROJ_COLOR.cartoon }) };
+    /** @type {THREE.MeshBasicMaterial|null} 敵機彈材質（lazy） */
+    this._enemyMat = null;
     this._missileGeo = buildVoxelGeometry(missileModel, { A: PROJ_COLOR.boom });
     /** @type {Map<string, THREE.BufferGeometry>} */
     this._balloonGeo = new Map();
@@ -102,8 +120,9 @@ export class Dogfight {
     }
   }
 
-  /** 設空戰子模式（balloons/pvp/…）。pvp＝玩家互打、清氣球；其餘＝氣球靶場。 @param {string} dogfightMode */
+  /** 設空戰子模式（balloons/pvp/ai_1v1/ai_2v2）。 @param {string} dogfightMode */
   setMode(dogfightMode) {
+    this.dfMode = dogfightMode;
     this.pvp = dogfightMode === 'pvp';
     if (this.active) this._applyModeTargets();
   }
@@ -111,12 +130,58 @@ export class Dogfight {
   /** main 每幀餵入「可命中玩家」清單（重生無敵期間的玩家不在內）。 @param {{slot:number,pos:{x:number,y:number,z:number},alive:boolean}[]} players */
   setPlayers(players) { this.players = Array.isArray(players) ? players : []; }
 
-  /** 依目前子模式佈置目標：pvp＝清氣球（打玩家）；否則＝氣球靶場 + 地面靶。 */
+  /** main 餵入敵機難度（難度曲線）+ handicap（adaptive 放水）。 @param {number} difficulty @param {number} handicap */
+  setDifficulty(difficulty, handicap) {
+    if (Number.isFinite(difficulty)) this.difficulty = difficulty;
+    if (Number.isFinite(handicap)) this.handicap = handicap;
+  }
+
+  /** 依目前子模式佈置目標：pvp＝清場打玩家；ai＝spawn 敵機；否則＝氣球靶場 + 地面靶。 */
   _applyModeTargets() {
     this._clearBalloons();
-    if (this.pvp) { this.balloonTotal = 0; return; } // PvP：對手就是靶
-    this._spawnBalloons();
+    this._clearEnemies();
+    this.balloonTotal = 0;
+    if (this.pvp) return;                                   // PvP：對手＝玩家
+    if (this.dfMode === 'ai_1v1') { this.spawnEnemies(1); return; }
+    if (this.dfMode === 'ai_2v2') { this.spawnEnemies(2); return; }
+    this._spawnBalloons();                                  // balloons（預設）
     this._spawnGroundTarget();
+  }
+
+  /** spawn 一波 n 架敵機（噴射機、敵色）。 @param {number} n */
+  spawnEnemies(n) {
+    this._clearEnemies();
+    for (let i = 0; i < n; i++) {
+      const entity = new PlaneEntity(this.scene, 0, planeSpec('f16').model, ENEMY_ACCENT);
+      const ang = (i / Math.max(1, n)) * Math.PI * 2 + 0.6;
+      const dist = 1600;
+      const state = makePlane({ x: Math.sin(ang) * dist, z: -Math.cos(ang) * dist, heading: ang + Math.PI });
+      state.pos.y = 300; state.speed = 55; state.mode = 'flying';
+      entity.setVisible(true);
+      this.enemies.push({ id: `e${i}`, state, entity, mag: makeMagazine(ENEMY_WEAPON), alive: true });
+    }
+  }
+
+  /** spawn 下一波（依子模式 1v1/2v2 決定架數）。 */
+  spawnWave() { this.spawnEnemies(this.dfMode === 'ai_2v2' ? 2 : 1); }
+
+  _clearEnemies() {
+    for (const e of this.enemies) e.entity.dispose();
+    this.enemies = [];
+  }
+
+  /** 存活敵機數。 */
+  aliveEnemies() { return this.enemies.reduce((n, e) => n + (e.alive ? 1 : 0), 0); }
+
+  /** 離某點最近的存活玩家（敵機選目標用）。 @param {{x:number,y:number,z:number}} pos */
+  _nearestPlayerTo(pos) {
+    let best = null; let bd = Infinity;
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      const d = Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
   }
 
   /** 命中率（%，整數）。 @param {number} slot */
@@ -172,11 +237,19 @@ export class Dogfight {
     if (this.groundTarget || this.redZones.length === 0) return;
     const z0 = this.redZones[0];
     const gy = this.groundY(z0.x, z0.z);
-    const geo = new THREE.BoxGeometry(40, 30, 40);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: '#c0392b' }));
+    // 場景化紅區：地面紅色半透明圓盤（玩家看得到「這塊可以打」）
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(z0.r, 40),
+      new THREE.MeshBasicMaterial({ color: '#e0392b', transparent: true, opacity: 0.35, depthWrite: false }),
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(z0.x, gy + 0.5, z0.z);
+    this.scene.add(disc);
+    // 紅區中央的地面靶（打中＝爆炸計分）
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(40, 30, 40), new THREE.MeshLambertMaterial({ color: '#c0392b' }));
     mesh.position.set(z0.x, gy + 15, z0.z);
     this.scene.add(mesh);
-    this.groundTarget = { mesh, pos: { x: z0.x, y: gy, z: z0.z }, alive: true, respawnAt: 0 };
+    this.groundTarget = { mesh, disc, pos: { x: z0.x, y: gy, z: z0.z }, alive: true, respawnAt: 0 };
   }
 
   _clearBalloons() {
@@ -186,9 +259,14 @@ export class Dogfight {
 
   _clear() {
     this._clearBalloons();
+    this._clearEnemies();
     for (const p of this.projectiles) this.scene.remove(p.mesh);
     this.projectiles = [];
-    if (this.groundTarget) { this.scene.remove(this.groundTarget.mesh); this.groundTarget.mesh.geometry.dispose(); this.groundTarget = null; }
+    if (this.groundTarget) {
+      this.scene.remove(this.groundTarget.mesh); this.groundTarget.mesh.geometry.dispose();
+      if (this.groundTarget.disc) { this.scene.remove(this.groundTarget.disc); this.groundTarget.disc.geometry.dispose(); }
+      this.groundTarget = null;
+    }
   }
 
   /** @param {number} slot @returns {'cartoon'|'aa'|'ag'} 目前武器 id */
@@ -205,17 +283,18 @@ export class Dogfight {
   /** 回機場補滿三種彈匣。 @param {number} slot */
   reloadAll(slot) { for (const id of WEAPON_ORDER) reload(this.mags[slot][id]); }
 
-  /** @param {number} slot HUD：PvP＝擊落+命中率；氣球模式＝剩餘氣球+分數 */
+  /** @param {number} slot HUD：PvP＝擊落+命中率；ai＝剩敵機+擊落+命中率；氣球模式＝剩餘氣球+分數 */
   hudText(slot) {
     const spec = this.weaponSpec(slot);
     const mag = this.mags[slot][this.weaponId(slot)];
     const wpn = `${spec.label} ${mag.ammo}/${mag.max}`;
     if (this.pvp) return `⚔️ 擊落 ${this.kills[slot]}　🎯 命中率 ${this.hitRate(slot)}%　${wpn}`;
+    if (this.enemies.length) return `🛩 敵機 ${this.aliveEnemies()}　擊落 ${this.kills[slot]}　🎯 ${this.hitRate(slot)}%　${wpn}`;
     return `${wpn}　🎈${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
   }
 
   /**
-   * 對空目標：PvP＝其他存活玩家（id 'p{slot}'）；否則＝存活氣球（id 'b{i}'）。
+   * 對空目標：PvP＝其他存活玩家（'p{slot}'）；ai＝存活敵機（'e{n}'）；否則＝存活氣球（'b{i}'）。
    * @param {number} slot 自己的 slot（PvP 要排除自己）
    * @returns {{id:string,pos:{x:number,y:number,z:number}}[]}
    */
@@ -223,11 +302,15 @@ export class Dogfight {
     if (this.pvp) {
       return this.players.filter((p) => p.alive && p.slot !== slot).map((p) => ({ id: `p${p.slot}`, pos: p.pos }));
     }
+    if (this.enemies.length) {
+      return this.enemies.filter((e) => e.alive).map((e) => ({ id: e.id, pos: e.state.pos }));
+    }
     return this.balloons.filter((b) => b.alive).map((b) => ({ id: b.id, pos: b.pos }));
   }
 
   /** @param {string} id @returns {{x:number,y:number,z:number}|null} */
   _targetPosOf(id) {
+    if (id[0] === 'e') { const e = this.enemies.find((x) => x.alive && x.id === id); return e ? e.state.pos : null; }
     if (id[0] === 'p') { const p = this.players.find((x) => x.alive && `p${x.slot}` === id); return p ? p.pos : null; }
     const b = this.balloons.find((x) => x.id === id);
     return b && b.alive ? b.pos : null;
@@ -280,15 +363,44 @@ export class Dogfight {
     mesh.rotation.order = 'YXZ';
     mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
     this.scene.add(mesh);
-    this.projectiles.push({ proj, owner: slot, mesh, missile });
+    this.projectiles.push({ proj, owner: slot, mesh, missile, fromEnemy: false });
     return { fired: true, sound: spec.sound };
+  }
+
+  /** 推進所有敵機：AI 決策 → flight-model → 同步；對最近玩家開火。 @param {number} dt @param {number} now */
+  _stepEnemies(dt, now) {
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const target = this._nearestPlayerTo(e.state.pos);
+      const input = target
+        ? decideInput(e.state, /** @type {any} */ ({ pos: target.pos }), { difficulty: this.difficulty, handicap: this.handicap })
+        : { r: 0, p: 0, th: 0.5, gearUp: true }; // 沒目標＝平飛
+      stepPlane(e.state, input, dt, this.env, this._f16);
+      e.entity.sync(e.state, input.th ?? 0.5, dt, this.env.groundY);
+      // 開火：對準最近玩家、在射程內、彈匣冷卻過
+      if (target && canFire(e.mag, now) && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM })) {
+        fire(e.mag, now);
+        const proj = spawnProjectile({ pos: e.state.pos, heading: e.state.heading }, ENEMY_WEAPON, `p${target.slot}`);
+        const mesh = new THREE.Mesh(this._projGeo, this._projMatEnemy());
+        mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
+        this.scene.add(mesh);
+        this.projectiles.push({ proj, owner: -1, mesh, missile: false, fromEnemy: true });
+      }
+    }
+  }
+
+  /** 敵機彈丸材質（紅，與玩家彈區隔）。 */
+  _projMatEnemy() {
+    if (!this._enemyMat) this._enemyMat = new THREE.MeshBasicMaterial({ color: PROJ_COLOR.enemy });
+    return this._enemyMat;
   }
 
   /**
    * 推進一步：氣球漂移 + 彈丸前進 + 命中處理 + 整輪打完換新輪。回傳本步事件（caller 播音/計分）。
-   * 事件 kind：pop=氣球啵、boom=紅區地面靶命中、exempt=打到地標（红線無效）、miss=對地落空、cleared=整輪打完、playerHit=PvP 擊中對手。
+   * 事件 kind：pop=氣球啵、boom=紅區地面靶、exempt=打到地標(红線無效)、miss=對地落空、cleared=氣球整輪打完、
+   * playerHit=PvP 擊中對手、enemyDown=擊落敵機、enemyHitPlayer=敵機擊中玩家、win=敵機全滅。
    * @param {number} dt @param {number} now ms
-   * @returns {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]}
+   * @returns {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit'|'enemyDown'|'enemyHitPlayer'|'win', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]}
    */
   step(dt, now) {
     if (!this.active) return [];
@@ -303,8 +415,10 @@ export class Dogfight {
       this.groundTarget.alive = true;
       this.groundTarget.mesh.visible = true;
     }
+    // 敵機推進 + 開火
+    this._stepEnemies(dt, now);
 
-    /** @type {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]} */
+    /** @type {{kind:'pop'|'boom'|'exempt'|'miss'|'cleared'|'playerHit'|'enemyDown'|'enemyHitPlayer'|'win', owner:number, victim?:number, sound?:'cartoon'|'boom'}[]} */
     const events = [];
     const env = { targetPosOf: (/** @type {string} */ id) => this._targetPosOf(id), groundY: this.groundY };
 
@@ -317,11 +431,23 @@ export class Dogfight {
       if (res.result === 'flying') { survivors.push(p); continue; }
       if (res.result === 'hit') {
         const sound = p.proj.spec.sound;
-        if (p.proj.spec.kind === 'air' && typeof res.targetId === 'string' && res.targetId[0] === 'p') {
+        const tid = typeof res.targetId === 'string' ? res.targetId : '';
+        if (p.fromEnemy && tid[0] === 'p') {
+          // 敵機命中玩家 → 受擊事件（後果軸由 main 套用）
+          events.push({ kind: 'enemyHitPlayer', owner: p.owner, victim: Number(tid.slice(1)), sound });
+        } else if (tid[0] === 'e') {
+          // 玩家命中敵機 → 擊落 + 計分；全滅 → win
+          const e = this.enemies.find((x) => x.alive && x.id === tid);
+          if (e) {
+            e.alive = false; e.entity.setVisible(false);
+            this.kills[p.owner] += 1; this.hits[p.owner] += 1;
+            events.push({ kind: 'enemyDown', owner: p.owner, sound });
+            if (this.aliveEnemies() === 0) events.push({ kind: 'win', owner: p.owner });
+          }
+        } else if (p.proj.spec.kind === 'air' && tid[0] === 'p') {
           // PvP：命中對手玩家 → 擊落事件（後果軸由 main 套用到受擊方）
-          const victim = Number(res.targetId.slice(1));
           this.kills[p.owner] += 1; this.hits[p.owner] += 1;
-          events.push({ kind: 'playerHit', owner: p.owner, victim, sound });
+          events.push({ kind: 'playerHit', owner: p.owner, victim: Number(tid.slice(1)), sound });
         } else if (p.proj.spec.kind === 'air' && res.targetId != null) {
           // 對空命中氣球 → 啵（去暴力）；不個別重生
           const b = this.balloons.find((x) => x.id === res.targetId);

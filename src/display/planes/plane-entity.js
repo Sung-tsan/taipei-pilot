@@ -14,9 +14,11 @@ export class PlaneEntity {
    * @param {THREE.Scene} scene
    * @param {number} slot
    * @param {import('./plane-specs.js').PlaneModel} [model] 機型 voxel（缺省＝預設機 T-34C）
+   * @param {string} [accent] 機身 accent 色（缺省＝slot 色；敵機可傳專屬色）
    */
-  constructor(scene, slot, model = planeSpec(DEFAULT_PLANE).model) {
+  constructor(scene, slot, model = planeSpec(DEFAULT_PLANE).model, accent = SLOT_COLORS[slot]) {
     this.slot = slot;
+    this.accent = accent;
     this.group = new THREE.Group();
     this.group.rotation.order = 'YXZ'; // yaw → pitch → roll
 
@@ -63,7 +65,7 @@ export class PlaneEntity {
     this._planeMeshes = [];
 
     const body = new THREE.Mesh(
-      buildVoxelGeometry(model.body, { A: SLOT_COLORS[this.slot] }),
+      buildVoxelGeometry(model.body, { A: this.accent }),
       voxelMaterial(),
     );
     this.group.add(body);
@@ -138,5 +140,14 @@ export class PlaneEntity {
   setVisible(v) {
     this.group.visible = v;
     this.shadow.visible = v;
+  }
+
+  /** 從場景移除並釋放幾何（敵機換波/清場用）。 */
+  dispose() {
+    for (const m of this._planeMeshes) m.geometry.dispose();
+    this.shadow.geometry.dispose();
+    this.smoke.geometry.dispose();
+    this.group.parent?.remove(this.group);
+    this.shadow.parent?.remove(this.shadow);
   }
 }

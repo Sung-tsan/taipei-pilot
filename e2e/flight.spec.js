@@ -167,6 +167,22 @@ test('空戰子模式 PvP：選 ⚔️對打 → 清氣球、pvp 旗標開', asy
   await ctx.close();
 });
 
+// v2.0-4：選空戰子模式 1v1 → spawn 敵機（端到端驗 submode→spawnEnemies 接線）。
+test('空戰子模式 1v1：選 🤖1v1 → spawn 一架敵機、清氣球', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#pmRow [data-pm="dogfight"]');
+  await display.click('#dmRow [data-dm="ai_1v1"]');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfightMode)).toBe('ai_1v1');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfight.enemies.length)).toBe(1);
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfight.balloonTotal)).toBe(0);
+  await ctx.close();
+});
+
 // 回歸：v1.1-1 StatusSlot（後果 badge）與 v1.1-0 左上控制列 #topBtns 都釘左上 → 曾整個疊在一起
 // （HITL 2026-06-13 Sung 截圖回報）。沒修就會紅。
 test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）', async ({ browser }) => {

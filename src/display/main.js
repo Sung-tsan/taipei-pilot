@@ -12,6 +12,7 @@ import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
 import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
 import { Dogfight } from './combat/dogfight.js';
+import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -84,10 +85,13 @@ let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 // 地標豁免區（红線：空對地命中 7 教育地標無效）；demo 紅區放開闊處（場景化紅區由 v2.0-4 進 airspace）。
 const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @type {any} */ (l).clear ?? 200) + 80 }));
 const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
-const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY });
+const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY, env });
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
-const pvpInvuln = states.map(() => 0);  // PvP 被擊落後的無敵/暫退到期時間（per slot）
-const pvpSmoke = states.map(() => false); // PvP 冒煙中（無敵期過了要清）
+const pvpInvuln = states.map(() => 0);  // 被擊落後的無敵/暫退到期時間（per slot；PvP + 敵機共用）
+const pvpSmoke = states.map(() => false); // 冒煙中（無敵期過了要清）
+let aiRound = 0;        // 敵機波次（難度曲線：越後越難）
+/** @type {boolean[]} 近期對局結果（true=玩家清掉一波、false=玩家被擊落）→ adaptive 放水 */
+const aiResults = [];
 const PLANE_COLLIDE_R = 18; // 兩機相撞半徑（m）：溫和/真實才處罰（HITL）
 let planeCollideCooldown = 0; // 相撞後果冷卻（避免每幀重複觸發）
 
@@ -235,8 +239,8 @@ function renderModeMenuUI() {
 function applyPlayMode(mode) {
   playMode = mode;
   renderModeBtn();
-  if (playMode === 'dogfight') dogfight.setMode(dogfightMode); // 設 pvp 旗標（balloons/pvp）
-  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球或清場打玩家
+  if (playMode === 'dogfight') { dogfight.setMode(dogfightMode); resetAiProgress(); } // 設子模式旗標（balloons/pvp/ai）
+  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球/敵機或清場打玩家
   net.sendMode(playMode);                       // 廣播給遙控器 → 換 context 鍵（發射/換武器）
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
@@ -264,7 +268,7 @@ for (const b of document.querySelectorAll('#dmRow .set-opt')) {
     const m = b.getAttribute('data-dm');
     if (!m) return;
     dogfightMode = m;
-    if (playMode === 'dogfight') dogfight.setMode(dogfightMode); // 即時切 balloons↔pvp（清/spawn 氣球）
+    if (playMode === 'dogfight') { dogfight.setMode(dogfightMode); resetAiProgress(); } // 即時切 balloons/pvp/ai（清/spawn 目標）
     renderModeMenuUI();
   });
 }
@@ -444,14 +448,14 @@ function taskHtml(i, s) {
 
 /** 空戰每步：換武器(上升緣)/對空鎖定/發射 + 彈丸推進 + 命中事件 @param {number} now */
 function updateDogfight(now) {
-  // PvP：餵入「可命中玩家」清單（在空中、且不在被擊落暫退無敵期內）
-  if (dogfight.pvp) {
-    const players = [];
-    for (let i = 0; i < MAX_SLOTS; i++) {
-      if (wasDriven[i] && states[i].mode === 'flying' && now >= pvpInvuln[i]) players.push({ slot: i, pos: states[i].pos, alive: true });
-    }
-    dogfight.setPlayers(players);
-  } else dogfight.setPlayers([]);
+  // 餵入「可命中玩家」清單（PvP 對手 + 敵機選目標都用；無敵暫退期間不可被命中）
+  const players = [];
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (wasDriven[i] && states[i].mode === 'flying' && now >= pvpInvuln[i]) players.push({ slot: i, pos: states[i].pos, alive: true });
+  }
+  dogfight.setPlayers(players);
+  // 敵機難度：難度曲線(波次) + adaptive 放水(近期勝負) + heuristic 地板（在 enemy-ai 內）
+  if (dogfight.enemies.length) dogfight.setDifficulty(difficultyLevel(aiRound), adaptiveHandicap(aiResults));
 
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) { prevSwitchBit[i] = false; continue; }
@@ -477,15 +481,23 @@ function updateDogfight(now) {
     else if (ev.kind === 'boom') { audio.groundBoom(); toast(ev.owner, '🎯 紅區命中！'); }
     else if (ev.kind === 'exempt') toast(ev.owner, '⛔ 地標不能打（保護）'); // 红線回饋
     else if (ev.kind === 'cleared') { audio.missionSuccess(); for (let i = 0; i < MAX_SLOTS; i++) if (wasDriven[i]) toast(i, '🎈 氣球全打完！再來一輪'); }
-    else if (ev.kind === 'playerHit') handlePvpHit(ev.victim, ev.owner, now);
+    else if (ev.kind === 'playerHit') { toast(ev.owner, '🎯 擊落對手！'); handlePlayerDowned(ev.victim, now); }
+    else if (ev.kind === 'enemyDown') { audio.explode(); toast(ev.owner, '🎯 擊落敵機！'); }
+    else if (ev.kind === 'enemyHitPlayer') { handlePlayerDowned(ev.victim, now); recordAiResult(false); } // 玩家被敵機打下＝這波吃虧
+    else if (ev.kind === 'win') { aiRound += 1; recordAiResult(true); audio.missionSuccess(); for (let i = 0; i < MAX_SLOTS; i++) if (wasDriven[i]) toast(i, '🎉 擊落全部敵機！下一波來了'); dogfight.spawnWave(); }
     // miss：不吵（無 toast）
   }
 }
 
-/** PvP 被擊中後果（接後果軸）：安全/溫和＝冒煙暫退·幾秒重生回場（非淘汰）；真實＝擊落出局。 @param {number|undefined} victim @param {number} shooter @param {number} now */
-function handlePvpHit(victim, shooter, now) {
-  if (victim == null) return;
-  toast(shooter, '🎯 擊落對手！');
+/** 記一筆近期對局結果（adaptive 放水用），保留最後 8 筆。 @param {boolean} playerWon */
+function recordAiResult(playerWon) { aiResults.push(playerWon); if (aiResults.length > 8) aiResults.shift(); }
+
+/** 進入/切換空戰子模式時重置敵機波次進度（難度從頭）。 */
+function resetAiProgress() { aiRound = 0; aiResults.length = 0; }
+
+/** 玩家被擊落後果（接後果軸；PvP 與敵機共用）：安全/溫和＝冒煙暫退·幾秒重生回場（非淘汰）；真實＝擊落出局。 @param {number|undefined} victim @param {number} now */
+function handlePlayerDowned(victim, now) {
+  if (victim == null || !wasDriven[victim]) return;
   audio.explode();
   net.sendFx(victim, 'bump');
   if (settings.mode === 'real') {
@@ -538,7 +550,10 @@ function renderMinimap() {
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (wasDriven[i]) blips.push({ x: states[i].pos.x, z: states[i].pos.z, heading: states[i].heading, kind: i === 0 ? 'self' : 'ally' });
   }
-  if (playMode === 'dogfight') for (const b of dogfight.balloons) if (b.alive) blips.push({ x: b.pos.x, z: b.pos.z, kind: 'balloon' });
+  if (playMode === 'dogfight') {
+    for (const b of dogfight.balloons) if (b.alive) blips.push({ x: b.pos.x, z: b.pos.z, kind: 'balloon' });
+    for (const e of dogfight.enemies) if (e.alive) blips.push({ x: e.state.pos.x, z: e.state.pos.z, heading: e.state.heading, kind: 'enemy' });
+  }
   minimap.render(/** @type {any} */ (blips));
 }
 
