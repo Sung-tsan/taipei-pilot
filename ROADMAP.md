@@ -25,6 +25,7 @@
 > **v2.0-4 HITL 第一輪調整**（Sung 測：武器手感 OK；敵機難度 NO-GO「連 5 次閃不過第一擊」）：敵機原沿用玩家黏死卡通彈→改專用「可閃」敵彈（慢+弱追蹤、追蹤力隨難度縮放）+首發 grace 3s+射擊錐收緊+冷卻隨難度；我方 F-16 大幅增靈活(BANK_RATE 3.8/MAX_BANK 1.2/TURN_G 15)、T-34C 滾轉率 1.6→2.0。**敵機難度待 Sung 複驗。**
 > **兩處角落 UI 互疊修正（HITL 截圖）**：斷線提示移上方置中帶（讓開左上控制叢）、掃碼面板移小地圖上方（右下不互蓋）；各加 overlap 回歸 e2e。
 > **v2.0-5 空戰 UI + Polish 完成**（typecheck 0 / 281 unit / 19 e2e；`handoff/2026-06-14_v2.0-5_DONE.md`）：HUD 分流（計分卡→TaskSlot、武器卡→ModeSlot 含冷卻/補彈狀態）、鎖定脈動動畫+提示音、分層爆炸音、首次教學。**取捨：擬真爆炸真·取樣 clip 待 CC0 音效資產（合成已逼近）。整個空戰 v2.0-1~5 待 Sung 批次雙真機 HITL。** 下一步 v2.1-1 競速（race 核心已預建）→ V2 收尾打 tag。
+> **v2.1-1 競速完成 → V2 全部實作完成**（typecheck 0 / 281 unit / 20 e2e；`handoff/2026-06-14_v2.1-1_DONE.md`）：兩型（穿圈航線 4 圈 / 地標衝刺 101）+ **起點/終點 3D 視覺（race-markers.js：起點閘門+航圈+終點圈，HITL #4）** + 各自獨立計時 + 名次=完成時間 + 落後不淘汰 + 全員完賽煙火 + 賽道型選單。**取捨：完賽以慶祝呈現、未寫收集簿（輕度簡化）。** **V2 全 6 子階段（v2.0-1~5 + v2.1-1）agent 實作完成、逐階段 commit、三閘全綠 → 待 Sung 批次雙真機 HITL 全 V2 → 打 tag `taipei-pilot-v2.0`（agent 不代簽/不代打 tag）。** 已知資產軌缺口（非程式）：擬真爆炸真·取樣音效 clip（待 CC0 drop）。
 >
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**
 

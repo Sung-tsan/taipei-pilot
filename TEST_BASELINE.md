@@ -8,8 +8,8 @@
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **280 passed**（24 files；+weapons/enemy-ai/race/balloon/dogfight/minimap/missile/plane-collision/plane-specs/context-keys） |
-| 整合 | `npm run e2e`（playwright） | **19 passed**（connect ×11 + flight ×8；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1 regression） |
+| 單元 | `npm test`（vitest） | **281 passed**（24 files；+weapons/enemy-ai/race/balloon/dogfight/minimap/missile/plane-collision/plane-specs/context-keys） |
+| 整合 | `npm run e2e`（playwright） | **20 passed**（connect ×11 + flight ×9；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1/競速 regression） |
 
 > JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
