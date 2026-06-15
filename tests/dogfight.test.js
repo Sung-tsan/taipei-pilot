@@ -201,12 +201,28 @@ describe('Dogfight 整合', () => {
     expect(df.hitRate(0)).toBe(0);
   });
 
-  it('ai_1v1 / ai_2v2：spawn 對應架數敵機、清氣球', () => {
+  it('ai_1v1 / ai_2v2：spawn 對應架數敵機（2v2 = 4 多一點）、清氣球、每機有隨機強度', () => {
     df.setMode('ai_1v1');
     expect(df.enemies.length).toBe(1);
     expect(df.balloonTotal).toBe(0);
     df.setMode('ai_2v2');
-    expect(df.enemies.length).toBe(2);
+    expect(df.enemies.length).toBe(4); // HITL 2026-06-15：2v2 敵機 2 → 4
+    for (const e of df.enemies) {
+      expect(e.strength).toBeGreaterThan(0); // 隨機強度倍率
+      expect(e.strength).toBeLessThanOrEqual(1.35);
+    }
+  });
+
+  it('翻滾閃避 breakLocksOn：拔掉咬著該玩家的敵機追蹤彈鎖（targetId→null），不咬別人', () => {
+    df.setMode('ai_1v1');
+    // 偽造兩枚敵機追蹤彈：一枚咬 p0、一枚咬 p1
+    df.projectiles = /** @type {any} */ ([
+      { proj: { targetId: 'p0' }, owner: -1, fromEnemy: true, mesh: {}, missile: false },
+      { proj: { targetId: 'p1' }, owner: -1, fromEnemy: true, mesh: {}, missile: false },
+    ]);
+    expect(df.breakLocksOn(0)).toBe(1);          // 只拔掉咬 p0 的那枚
+    expect(df.projectiles[0].proj.targetId).toBe(null);
+    expect(df.projectiles[1].proj.targetId).toBe('p1'); // 咬 p1 的不動
   });
 
   it('敵機 1v1：玩家持續射擊 → 擊落敵機（enemyDown + win + 計分）', () => {

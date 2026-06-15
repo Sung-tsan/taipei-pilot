@@ -23,10 +23,12 @@ export const FREE_FLIGHT_KEYS = /** @type {ContextKey[]} */ ([
 // —— V2 佔位 config（v2.0-1 先定資料；發射 btn 位元由 v2.0-2 加進 protocol，
 //    remote 端依模式換上這份鍵由 v2.0-5 接）——
 
-/** 空戰模式兩顆替換鍵：發射（按住連發、display 依冷卻節流）+ 換武器（上升緣循環）。 */
+/** 空戰模式替換鍵：發射（按住連發、display 依冷卻節流）+ 換武器（上升緣循環）+ 翻滾閃避（甩飛彈）。
+ *  HITL 2026-06-15：空戰多一顆「翻滾閃避」戰技鍵（其餘模式仍維持兩顆）。 */
 export const DOGFIGHT_KEYS = /** @type {ContextKey[]} */ ([
   { id: 'fire', label: '🔥 發射', hint: '飛近自動鎖定', btn: BTN.FIRE },
   { id: 'weapon', label: '🎯 換武器', hint: '卡通/飛彈', btn: BTN.WEAPON_SWITCH },
+  { id: 'dodge', label: '🌀 翻滾', hint: '甩開飛彈', btn: BTN.DODGE },
 ]);
 
 /** 競速模式兩顆替換鍵：衝刺 + 降落輔助。 */

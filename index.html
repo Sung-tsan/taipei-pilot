@@ -71,6 +71,12 @@
     body.split #hud-0 { left: 0;    width: 50vw; }
     body.split #hud-1 { left: 50vw; width: 50vw; }
 
+    /* 分屏（雙人）：半屏較窄，上排「置中計分卡 + 右上武器/彈藥卡」會互疊（HITL 2026-06-15：
+       看不到彈藥）。對策：縮字 + 把武器/彈藥卡（ModeSlot）下移到第二排靠右，
+       與置中的計分卡（TaskSlot）分排，永遠不打架。 */
+    body.split .slot:not(.center-slot) { font-size: 16px; padding: 6px 12px; } /* 縮字（不含中央 toast，維持大字） */
+    body.split .mode-slot { top: calc(var(--hud-pad) + 54px); }
+
     .slot {
       position: absolute; display: none; align-items: center; gap: 8px;
       font-size: var(--hud-fz); font-weight: 700; color: var(--ui-ink);

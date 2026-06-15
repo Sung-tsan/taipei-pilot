@@ -8,9 +8,11 @@ import {
 import { BTN } from '../shared/protocol.js';
 
 describe('context-keys 模式對照', () => {
-  it('每份 config 都是「正好兩顆」可替換鍵（槽位數固定）', () => {
+  it('自由飛/競速＝兩顆、空戰＝三顆（多一顆翻滾閃避）；每顆都有 id/label', () => {
+    expect(FREE_FLIGHT_KEYS).toHaveLength(2);
+    expect(RACE_KEYS).toHaveLength(2);
+    expect(DOGFIGHT_KEYS).toHaveLength(3);
     for (const keys of [FREE_FLIGHT_KEYS, DOGFIGHT_KEYS, RACE_KEYS]) {
-      expect(keys).toHaveLength(2);
       for (const k of keys) {
         expect(typeof k.id).toBe('string');
         expect(typeof k.label).toBe('string');
@@ -29,13 +31,15 @@ describe('context-keys 模式對照', () => {
     expect(keysForMode('weird')).toBe(FREE_FLIGHT_KEYS);
   });
 
-  it('空戰鍵＝發射(FIRE 位元) + 換武器(WEAPON_SWITCH 位元)，走 btn bitmask（momentary）', () => {
+  it('空戰鍵＝發射(FIRE) + 換武器(WEAPON_SWITCH) + 翻滾閃避(DODGE)，皆走 btn bitmask（momentary）', () => {
     const ids = DOGFIGHT_KEYS.map((k) => k.id);
-    expect(ids).toEqual(['fire', 'weapon']);
+    expect(ids).toEqual(['fire', 'weapon', 'dodge']);
     const fire = DOGFIGHT_KEYS.find((k) => k.id === 'fire');
     const weapon = DOGFIGHT_KEYS.find((k) => k.id === 'weapon');
+    const dodge = DOGFIGHT_KEYS.find((k) => k.id === 'dodge');
     expect(fire?.btn).toBe(BTN.FIRE);
     expect(weapon?.btn).toBe(BTN.WEAPON_SWITCH);
+    expect(dodge?.btn).toBe(BTN.DODGE);
   });
 
   it('KEYS_BY_MODE 涵蓋四個玩法模式', () => {

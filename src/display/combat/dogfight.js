@@ -31,6 +31,16 @@ const GROUND_RESPAWN_MS = 3000;   // 地面靶打掉後重生間隔
 const PROJ_COLOR = { cartoon: '#ffd84a', boom: '#ff7a33', enemy: '#ff4d4d' };
 const ENEMY_ACCENT = '#3a4250';   // 敵機機身色（暗灰，與紅/藍友機區隔）
 const ENEMY_FIRE_GRACE_MS = 3000; // 敵機 spawn 後不開火的緩衝（HITL：別一出現就秒射、玩家來得及反應）
+// 敵機 spawn 編隊（HITL 2026-06-15）：拉遠、落在玩家「前方弧內」（不要一出現就咬機尾根本瞄不到），
+// V 字編隊出現 → 接近後各自追擊自然分散；每機隨機強度（弱兵/王牌）。
+const ENEMY_SPAWN_DIST = 3000;    // m 編隊 spawn 距離（遠方進場）
+const ENEMY_SPAWN_ARC_RAD = (55 * Math.PI) / 180; // spawn 方向落在玩家機頭 ±55° 內（看得到、瞄得到）
+const ENEMY_FORMATION_GAP = 150;  // m 編隊橫向間距
+const ENEMY_FORMATION_BACK = 80;  // m V 字外側後退量（每道）
+const ENEMY_ALT = 320;            // m 敵機巡航高度
+const ENEMY_STRENGTH_MIN = 0.55;  // 隨機強度下限（弱兵）
+const ENEMY_STRENGTH_SPAN = 0.8;  // 隨機強度跨度（上限 ≈ 1.35＝王牌）
+const AI_COUNT = { ai_1v1: 1, ai_2v2: 4 }; // 每波敵機數（HITL：2v2 從 2 → 4，多一點）
 // 敵彈：刻意「可閃」——慢、弱追蹤（追蹤力再隨難度縮放），與玩家的卡通彈(homing 2.6 黏死)不同。
 /** @type {import('./weapons.js').WeaponSpec} */
 const ENEMY_WEAPON = {
@@ -41,6 +51,8 @@ const ENEMY_WEAPON = {
 
 /** @param {number} lo @param {number} hi */
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+/** @param {number} v @param {number} lo @param {number} hi */
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export class Dogfight {
   /**
@@ -79,11 +91,11 @@ export class Dogfight {
     // PvP：dogfightMode==='pvp' 才開玩家互打；否則兩機幽靈穿透（不互鎖、不互傷）。
     this.pvp = false;
     this.dfMode = 'balloons'; // balloons / pvp / ai_1v1 / ai_2v2
-    /** @type {{slot:number, pos:{x:number,y:number,z:number}, alive:boolean}[]} 每幀由 main 餵入的可命中玩家 */
+    /** @type {{slot:number, pos:{x:number,y:number,z:number}, heading?:number, alive:boolean}[]} 每幀由 main 餵入的可命中玩家（heading 供敵機 spawn 算「玩家前方」） */
     this.players = [];
 
-    // 敵機 AI（ai_1v1 / ai_2v2）：難度由 main 依局數+adaptive 餵入。
-    /** @type {{id:string, state:any, entity:PlaneEntity, mag:any, alive:boolean, spawnAt:number}[]} */
+    // 敵機 AI（ai_1v1 / ai_2v2）：難度由 main 依局數+adaptive 餵入；strength＝每機隨機強度倍率。
+    /** @type {{id:string, state:any, entity:PlaneEntity, mag:any, alive:boolean, spawnAt:number, strength:number}[]} */
     this.enemies = [];
     this.difficulty = 0.3; // 0..1（難度曲線，main 餵）
     this.handicap = 0.4;   // 0..1（adaptive 放水，main 餵）
@@ -151,28 +163,63 @@ export class Dogfight {
     this._clearEnemies();
     this.balloonTotal = 0;
     if (this.pvp) return;                                   // PvP：對手＝玩家
-    if (this.dfMode === 'ai_1v1') { this.spawnEnemies(1); return; }
-    if (this.dfMode === 'ai_2v2') { this.spawnEnemies(2); return; }
+    if (this.dfMode === 'ai_1v1' || this.dfMode === 'ai_2v2') { this.spawnEnemies(this._waveCount()); return; }
     this._spawnBalloons();                                  // balloons（預設）
     this._spawnGroundTarget();
   }
 
-  /** spawn 一波 n 架敵機（噴射機、敵色）。 @param {number} n */
+  /** 每波敵機數（HITL：2v2 多一點）。 @returns {number} */
+  _waveCount() { return AI_COUNT[/** @type {keyof typeof AI_COUNT} */ (this.dfMode)] ?? 1; }
+
+  /**
+   * 編隊 spawn 錨點：遠離玩家、落在玩家機頭前方弧內（不在機尾），朝玩家飛來。
+   * 沒有在飛的玩家（剛進場/還在跑道）→ 退回機場原點、朝北（敵機從北方遠處進場）。
+   * @returns {{x:number, z:number, heading:number}} heading＝敵機飛行朝向（指回玩家）
+   */
+  _spawnAnchor() {
+    const flying = this.players.filter((p) => p && p.alive);
+    let cx = 0, cz = 0, face = 0;
+    if (flying.length) {
+      for (const p of flying) { cx += p.pos.x; cz += p.pos.z; }
+      cx /= flying.length; cz /= flying.length;
+      const h = flying[0].heading;
+      face = Number.isFinite(h) ? /** @type {number} */ (h) : 0; // 以第一架玩家朝向當「前方」
+    }
+    // 在玩家前方 ±ARC 內挑方向（避免一出現就在機尾）→ 往該方向拉遠 ENEMY_SPAWN_DIST。
+    const dir = face + rand(-ENEMY_SPAWN_ARC_RAD, ENEMY_SPAWN_ARC_RAD);
+    const ax = cx + Math.sin(dir) * ENEMY_SPAWN_DIST;
+    const az = cz - Math.cos(dir) * ENEMY_SPAWN_DIST;
+    // 敵機朝玩家質心飛（heading 指回 center）。
+    const heading = Math.atan2(cx - ax, -(cz - az));
+    return { x: ax, z: az, heading };
+  }
+
+  /** spawn 一波 n 架敵機：V 字編隊、遠方前方進場、每機隨機強度（噴射機、敵色）。 @param {number} n */
   spawnEnemies(n) {
     this._clearEnemies();
+    const a = this._spawnAnchor();
+    const ph = a.heading;
+    const rx = Math.cos(ph), rz = Math.sin(ph);   // 航向右側單位向量
+    const fx = Math.sin(ph), fz = -Math.cos(ph);  // 航向前方單位向量
     for (let i = 0; i < n; i++) {
+      const lane = i - (n - 1) / 2;               // 置中分道：…-1,0,1…
+      const lat = lane * ENEMY_FORMATION_GAP;
+      const back = Math.abs(lane) * ENEMY_FORMATION_BACK; // V 字：外側略後
+      const state = makePlane({
+        x: a.x + rx * lat - fx * back,
+        z: a.z + rz * lat - fz * back,
+        heading: ph,
+      });
+      state.pos.y = ENEMY_ALT + lane * 18; state.speed = 62; state.mode = 'flying';
       const entity = new PlaneEntity(this.scene, 0, planeSpec('f16').model, ENEMY_ACCENT);
-      const ang = (i / Math.max(1, n)) * Math.PI * 2 + 0.6;
-      const dist = 1600;
-      const state = makePlane({ x: Math.sin(ang) * dist, z: -Math.cos(ang) * dist, heading: ang + Math.PI });
-      state.pos.y = 300; state.speed = 55; state.mode = 'flying';
       entity.setVisible(true);
-      this.enemies.push({ id: `e${i}`, state, entity, mag: makeMagazine(ENEMY_WEAPON), alive: true, spawnAt: -1 });
+      const strength = clamp(ENEMY_STRENGTH_MIN + Math.random() * ENEMY_STRENGTH_SPAN, 0, 1.35);
+      this.enemies.push({ id: `e${i}`, state, entity, mag: makeMagazine(ENEMY_WEAPON), alive: true, spawnAt: -1, strength });
     }
   }
 
   /** spawn 下一波（依子模式 1v1/2v2 決定架數）。 */
-  spawnWave() { this.spawnEnemies(this.dfMode === 'ai_2v2' ? 2 : 1); }
+  spawnWave() { this.spawnEnemies(this._waveCount()); }
 
   _clearEnemies() {
     for (const e of this.enemies) e.entity.dispose();
@@ -181,6 +228,21 @@ export class Dogfight {
 
   /** 存活敵機數。 */
   aliveEnemies() { return this.enemies.reduce((n, e) => n + (e.alive ? 1 : 0), 0); }
+
+  /**
+   * 翻滾閃避：把所有正咬著該玩家的「敵機追蹤彈」拔鎖（targetId→null）→ 彈丸轉直線飛走、不再咬人。
+   * 由 main 在玩家觸發翻滾 + 閃避窗內每幀呼叫（HITL：按一下就甩掉飛彈）。
+   * @param {number} slot 被咬的玩家 slot
+   * @returns {number} 被拔鎖的彈丸數
+   */
+  breakLocksOn(slot) {
+    const id = `p${slot}`;
+    let n = 0;
+    for (const p of this.projectiles) {
+      if (p.fromEnemy && p.proj.targetId === id) { p.proj.targetId = null; n += 1; }
+    }
+    return n;
+  }
 
   /** 離某點最近的存活玩家（敵機選目標用）。 @param {{x:number,y:number,z:number}} pos */
   _nearestPlayerTo(pos) {
@@ -387,9 +449,13 @@ export class Dogfight {
   _stepEnemies(dt, now) {
     for (const e of this.enemies) {
       if (!e.alive) continue;
+      // 每機隨機強度（弱兵/王牌）：縮放難度——強者更兇、弱者多放水（HITL：強度多元）。
+      const sf = Number.isFinite(e.strength) ? e.strength : 1;
+      const effDiff = clamp(this.difficulty * sf, 0, 1);
+      const effHcap = clamp(this.handicap + (1 - sf) * 0.45, 0, 1);
       const target = this._nearestPlayerTo(e.state.pos);
       const input = target
-        ? decideInput(e.state, /** @type {any} */ ({ pos: target.pos }), { difficulty: this.difficulty, handicap: this.handicap })
+        ? decideInput(e.state, /** @type {any} */ ({ pos: target.pos }), { difficulty: effDiff, handicap: effHcap })
         : { r: 0, p: 0, th: 0.5, gearUp: true }; // 沒目標＝平飛
       stepPlane(e.state, input, dt, this.env, this._f16);
       e.entity.sync(e.state, input.th ?? 0.5, dt, this.env.groundY);
@@ -398,11 +464,11 @@ export class Dogfight {
       const armed = now - e.spawnAt > ENEMY_FIRE_GRACE_MS;
       if (target && armed && canFire(e.mag, now)
           && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM, coneRad: 0.16 })) {
-        // 追蹤力隨難度（易/放水→近直線可閃；難→中等追蹤、急轉仍可甩）
-        const homing = Math.max(0, 0.18 + 0.5 * this.difficulty - 0.4 * this.handicap);
+        // 追蹤力隨「該機」難度（易/放水→近直線可閃；難→中等追蹤、急轉/翻滾仍可甩）
+        const homing = Math.max(0, 0.18 + 0.5 * effDiff - 0.4 * effHcap);
         const proj = spawnProjectile({ pos: e.state.pos, heading: e.state.heading }, { ...ENEMY_WEAPON, homingRate: homing }, `p${target.slot}`);
         // 冷卻隨難度/handicap：易/放水→射更慢（敵彈不耗盡、不補彈）
-        e.mag.readyAt = now + ENEMY_WEAPON.cooldownSec * 1000 * (1.6 - this.difficulty * 0.6 + this.handicap * 1.0);
+        e.mag.readyAt = now + ENEMY_WEAPON.cooldownSec * 1000 * (1.6 - effDiff * 0.6 + effHcap * 1.0);
         e.mag.ammo = e.mag.max;
         const mesh = new THREE.Mesh(this._projGeo, this._projMatEnemy());
         mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);

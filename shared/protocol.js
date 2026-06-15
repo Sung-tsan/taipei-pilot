@@ -37,6 +37,7 @@ export const BTN = {
   GEAR_UP: 1,       // 設起 = 想收起落架（地面上 display 會忽略，離地後自動生效）
   FIRE: 2,          // 空戰：發射（momentary 按住；display 端依武器冷卻節流）
   WEAPON_SWITCH: 4, // 空戰：換武器（momentary；display 端偵測上升緣循環切換）
+  DODGE: 8,         // 空戰：翻滾閃避（momentary；display 端偵測上升緣觸發滾筒翻＋拔掉追蹤飛彈的鎖）
   // 喇叭已改為 remote 本地播聲（兩機同玩不互相干擾），不再走 b bitmask。
 };
 

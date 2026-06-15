@@ -208,6 +208,38 @@ test('空戰子模式 1v1：選 🤖1v1 → spawn 一架敵機、清氣球', asy
   await ctx.close();
 });
 
+// v3 HITL 2026-06-15：2v2 敵機 4 架且從遠方（>2000m）進場（不再一出現就咬機尾）；翻滾閃避鍵可觸發。
+test('空戰 2v2：4 架敵機從遠方 spawn + 翻滾閃避（Z）可觸發', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#pmRow [data-pm="dogfight"]');
+  await display.click('#dmRow [data-dm="ai_2v2"]');
+  await display.click('#modeMenuClose');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfight.enemies.length)).toBe(4);
+  // 全部敵機都在遠方（離機場 > 2000m）→ 不會一出現就在機尾
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.dogfight.enemies
+    .every((/** @type {any} */ e) => Math.hypot(e.state.pos.x, e.state.pos.z) > 2000))).toBe(true);
+
+  // 鍵盤起飛 → 按 Z 翻滾閃避 → 閃避狀態被觸發（readyAt 落在未來）
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.down('KeyZ');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.dodges[0].readyAt > 0),
+    { timeout: 10000 },
+  ).toBe(true);
+  await display.keyboard.up('KeyZ');
+  await display.keyboard.up('Space');
+  await ctx.close();
+});
+
 // v2.1-1：選競速 → 賽道標記（起點+航圈+終點）建出；切兩型（穿圈航線 4 圈 / 地標衝刺 1 終點）。
 test('競速：選競速 → 賽道標記建出、切穿圈/地標兩型', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });

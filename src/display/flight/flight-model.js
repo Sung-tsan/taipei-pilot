@@ -25,7 +25,7 @@ export const P = {
   TURN_G: 9.8,          // 自動協調轉彎用
   FLOOR_AGL: 35,        // m 低空保護目標高度
   FLOOR_ZONE: 70,       // m 低於此高度開始混入拉起（機場區除外，否則無法降落）
-  CLIMB_CEIL: 600,      // m 雲頂
+  CLIMB_CEIL: 1000,     // m 空域天花板（HITL 2026-06-15：600 太侷限，拉高到 1000；雲在 ~500，飛上雲端更爽）
   BOUNDARY_SOFT: 9000,  // m 開始柔性轉回
   BOUNDARY_R: 10000,    // m 空域半徑
   LAND_MAX_SINK: 6,     // m/s 接地最大下沉率（寬鬆）
@@ -45,11 +45,11 @@ export const P = {
  * @typedef {{ x:number, y:number, z:number }} Vec3
  * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
  *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean,
- *             fire?:boolean, weaponSwitch?:boolean,
+ *             fire?:boolean, weaponSwitch?:boolean, dodge?:boolean,
  *             wind?:{x:number,z:number}, gust?:{roll:number,pitch:number} }} Input
  *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
  *   landAnywhere＝真實模式：關閉機場外低空拉起、機場外觸地＝迫降（缺省 false＝與 v1 一致）。
- *   fire/weaponSwitch＝空戰按鍵（flight-model 忽略，由 main 的空戰邏輯消費）。
+ *   fire/weaponSwitch/dodge＝空戰按鍵（flight-model 忽略，由 main 的空戰邏輯消費）。
  *   wind＝側風持續側向位移(m/s，加在水平位移上，需 crab 修正)；gust＝亂流姿態擾動(疊 bank/pitch 目標)。
  *   兩者缺省＝0＝與 v1 逐位元一致（純加法+中立預設，只真實模式由 main 餵非 0）。
  * @typedef {'parked'|'rolling'|'flying'} PlaneMode

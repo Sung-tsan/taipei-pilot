@@ -18,6 +18,7 @@ import { PlaneEntity } from './planes/plane-entity.js';
 import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
 import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
+import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -94,6 +95,8 @@ const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @ty
 const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
 const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY, env });
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
+const prevDodgeBit = states.map(() => false);  // 翻滾閃避鍵上升緣偵測（per slot）
+const dodges = states.map(() => makeDodge());  // 翻滾閃避狀態機（per slot）
 const pvpInvuln = states.map(() => 0);  // 被擊落後的無敵/暫退到期時間（per slot；PvP + 敵機共用）
 const pvpSmoke = states.map(() => false); // 冒煙中（無敵期過了要清）
 const prevLock = states.map(() => /** @type {string|null} */ (null)); // 鎖定上升緣（剛鎖到才響提示音）
@@ -479,6 +482,7 @@ function inputFor(slot) {
       r: live.r, p: live.p, th: live.th, gearUp: !!(live.b & BTN.GEAR_UP),
       rudder: live.rudder ?? 0, flaps: live.flaps ?? 0, trim: live.trim ?? 0, // 複雜版（缺＝中立）
       fire: !!(live.b & BTN.FIRE), weaponSwitch: !!(live.b & BTN.WEAPON_SWITCH), // 空戰鍵
+      dodge: !!(live.b & BTN.DODGE), // 翻滾閃避鍵
     };
   }
   const lastInput = lastInputs[slot];
@@ -609,25 +613,38 @@ function updateDogfight(now) {
   // 餵入「可命中玩家」清單（PvP 對手 + 敵機選目標都用；無敵暫退期間不可被命中）
   const players = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
-    if (wasDriven[i] && states[i].mode === 'flying' && now >= pvpInvuln[i]) players.push({ slot: i, pos: states[i].pos, alive: true });
+    if (wasDriven[i] && states[i].mode === 'flying' && now >= pvpInvuln[i]) players.push({ slot: i, pos: states[i].pos, heading: states[i].heading, alive: true });
   }
   dogfight.setPlayers(players);
   // 敵機難度：難度曲線(波次) + adaptive 放水(近期勝負) + heuristic 地板（在 enemy-ai 內）
   if (dogfight.enemies.length) dogfight.setDifficulty(difficultyLevel(aiRound), adaptiveHandicap(aiResults));
 
   for (let i = 0; i < MAX_SLOTS; i++) {
-    if (!wasDriven[i]) { prevSwitchBit[i] = false; continue; }
+    if (!wasDriven[i]) { prevSwitchBit[i] = false; prevDodgeBit[i] = false; continue; }
     // 冒煙暫退無敵期過了 → 清冒煙
     if (pvpSmoke[i] && now >= pvpInvuln[i]) { pvpSmoke[i] = false; planes[i].setDamaged(false); }
     const s = states[i];
     if (s.mode !== 'flying') { // 回到地面（機場附近）→ 補滿彈藥
       if (Math.hypot(s.pos.x, s.pos.z) < 2000) dogfight.reloadAll(i);
-      prevSwitchBit[i] = false;
+      prevSwitchBit[i] = false; prevDodgeBit[i] = false;
       continue;
     }
     const inp = lastInputs[i];
     if (inp.weaponSwitch && !prevSwitchBit[i]) toast(i, `🔁 ${dogfight.cycleWeapon(i)}`); // 換武器（上升緣循環）
     prevSwitchBit[i] = !!inp.weaponSwitch;
+    // 翻滾閃避（上升緣觸發、冷卻內忽略）：拔掉咬著自己的飛彈鎖 + 視覺滾筒翻 + 橫向 jink。
+    if (inp.dodge && !prevDodgeBit[i] && dodgeReady(dodges[i], now)
+        && triggerDodge(dodges[i], now, (inp.r ?? 0) >= 0 ? 1 : -1)) {
+      dogfight.breakLocksOn(i); audio.whoosh(); net.sendFx(i, 'bump'); toast(i, '🌀 翻滾閃避！');
+    }
+    prevDodgeBit[i] = !!inp.dodge;
+    // 閃避窗內：持續拔鎖（剛射出的也甩掉）+ 朝側向 jink 一小段（真的閃開一截）。
+    if (dodging(dodges[i], now)) {
+      dogfight.breakLocksOn(i);
+      const j = dodges[i].dir * DODGE.JINK_MPS * DT;
+      s.pos.x += Math.cos(s.heading) * j;
+      s.pos.z += Math.sin(s.heading) * j;
+    }
     const lock = dogfight.updateLock(i, s); // 對空鎖定（PvP 對手 / 敵機 / 最近氣球，飛近自動）
     if (lock && lock !== prevLock[i]) audio.lockTone(); // 剛鎖到 → 提示音
     prevLock[i] = lock;
@@ -836,6 +853,7 @@ function loop(/** @type {number} */ now) {
   const views = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
+    planes[i].rollSpin = playMode === 'dogfight' ? dodgeRoll(dodges[i], now) : 0; // 翻滾閃避視覺
     planes[i].sync(states[i], lastInputs[i].th, frame, env.groundY);
     // 亂流鏡頭微晃（只真實模式 + 設定開；安全/溫和或關閉＝0 完全不晃，減暈）
     const shake = (conseq[i].mode === 'real' && settings.camShake && states[i].mode === 'flying') ? weatherForces(weather.type).turb : 0;
@@ -951,6 +969,9 @@ requestAnimationFrame(loop);
   setPlane: (/** @type {string} */ id) => setPlane(id),
   flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),
   dogfight, // v2.0-2 e2e/dev：戳武器/彈藥/分數/氣球/彈丸狀態
+  dodges, // v3 e2e/dev：翻滾閃避狀態
+  isDodging: (/** @type {number} */ slot) => dodging(dodges[slot], performance.now()), // v3 e2e：是否在閃避窗
+  breakLocks: (/** @type {number} */ slot) => dogfight.breakLocksOn(slot),
   terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
   // e2e/dev：直接完成當前任務（略過飛到定點），驗任務迴圈 + 收集 + 慶祝
   completeMission: (/** @type {number} */ slot) => {

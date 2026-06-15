@@ -80,14 +80,16 @@ describe('parseMsg', () => {
   });
 
   // —— v2.0-2：空戰按鍵位元 + 模式廣播 ——
-  it('BTN 含 FIRE / WEAPON_SWITCH，且與 GEAR_UP 不互撞（獨立位元）', () => {
+  it('BTN 含 FIRE / WEAPON_SWITCH / DODGE，且與 GEAR_UP 不互撞（獨立位元）', () => {
     expect(BTN.GEAR_UP).toBe(1);
     expect(BTN.FIRE).toBe(2);
     expect(BTN.WEAPON_SWITCH).toBe(4);
-    // 三鍵同時按 → bitmask 互不干擾
-    const b = BTN.GEAR_UP | BTN.FIRE | BTN.WEAPON_SWITCH;
+    expect(BTN.DODGE).toBe(8);
+    // 四鍵同時按 → bitmask 互不干擾
+    const b = BTN.GEAR_UP | BTN.FIRE | BTN.WEAPON_SWITCH | BTN.DODGE;
     expect(!!(b & BTN.FIRE)).toBe(true);
     expect(!!(b & BTN.WEAPON_SWITCH)).toBe(true);
+    expect(!!(b & BTN.DODGE)).toBe(true);
     expect(!!(b & BTN.GEAR_UP)).toBe(true);
   });
 

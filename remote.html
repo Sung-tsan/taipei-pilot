@@ -117,15 +117,16 @@
       box-shadow: 0 calc(var(--press-lift) - var(--press-drop)) 0 var(--press-shadow, #0006);
     }
 
-    /* —— context 動作鍵 slot（2 顆可替換大鍵，預設 喇叭/降落輔助）—— */
-    #ctxKeys { display: flex; gap: 12px; width: 100%; justify-content: center; margin-top: 4px; }
+    /* —— context 動作鍵 slot（可替換大鍵：自由飛 2 顆；空戰 3 顆 發射/換武器/翻滾閃避）—— */
+    #ctxKeys { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 4px; }
     .ctx-key {
-      flex: 1 1 0; min-height: 64px; max-width: 150px;
+      flex: 1 1 0; min-width: 0; min-height: 64px; max-width: 150px;
       font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--ui-bg);
       border-radius: var(--r-md); padding: 8px 6px;
       background: var(--candy-amber); --press-shadow: var(--candy-amber-d);
     }
     .ctx-key:nth-child(2) { background: var(--candy-green); --press-shadow: var(--candy-green-d); }
+    .ctx-key:nth-child(3) { background: #56b6e0; --press-shadow: #2f7ba8; } /* 翻滾閃避（空戰第三鍵）*/
     .ctx-key.held { filter: brightness(.88); }
     .ctx-hint { font-size: 11px; font-weight: 600; opacity: .8; }
 

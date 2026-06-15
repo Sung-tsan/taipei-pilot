@@ -26,6 +26,7 @@ export class PlaneEntity {
     this._planeMeshes = [];
     /** @type {THREE.Mesh|null} 螺旋槳（噴射機＝null） */
     this.prop = null;
+    this.rollSpin = 0; // 額外滾轉量（rad）：翻滾閃避時疊在 -bank 上做 360° 滾筒翻（main 每幀餵）
     this._gearK = 1; // 1=放下 0=收起
     this.gear = this._buildModel(model); // 直接在 constructor 賦值（TS 認得確定初始化）
 
@@ -112,7 +113,7 @@ export class PlaneEntity {
     this.group.position.set(s.pos.x, s.pos.y, s.pos.z);
     this.group.rotation.y = -s.heading;
     this.group.rotation.x = s.pitch;
-    this.group.rotation.z = -s.bank;
+    this.group.rotation.z = -s.bank + (this.rollSpin || 0); // 翻滾閃避：疊上 360° 滾筒翻
     if (this.prop) this.prop.rotation.z += (6 + throttle * 30) * dt; // 噴射機無螺旋槳
 
     // 起落架收放動畫（~0.8s 平滑縮放）

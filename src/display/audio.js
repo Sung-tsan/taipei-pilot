@@ -216,6 +216,9 @@ export class GameAudio {
   /** 對地命中爆炸（擬真端，比 explode 更重） */
   groundBoom() { if (!this._on()) return; this._noise(0.55, 0.55, 1100, 90); this._tone('square', 140, 45, 0.5, 0.28); }
 
+  /** 翻滾閃避：颼一聲（空氣劃過，下掃噪 + 一抹音高） */
+  whoosh() { if (!this._on()) return; this._noise(0.34, 0.22, 1500, 320); this._tone('sine', 760, 240, 0.3, 0.12); }
+
   /** 落地成功小鈴（上行三音） */
   landingChime() {
     const ctx = this.ctx;
