@@ -3,13 +3,20 @@
 > 每個 handoff §0-PRE 要求「baseline 全綠才動工」。本檔記錄**當前綠燈基準**、**已修的坑**、以及
 > **已知非問題（假性紅燈）**——下次 session 照表對照即可，不用重新調查同一件事或重跑驗證。
 
-## 當前 baseline（最後更新 2026-06-14，含 V2[已 tag v2.0] + V3 v3.0-1~4（天氣全套，待 tag v3.0））
+## 當前 baseline（最後更新 2026-06-15，含 V2[已 tag v2.0] + V3 v3.0-1~4 + V3 HITL 五修 + v3.0-4 prompt 定稿 → 已 tag `taipei-pilot-v3.0`）
 
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **313 passed**（28 files；+weapons/enemy-ai/race/balloon/dogfight/minimap/missile/plane-collision/plane-specs/context-keys） |
-| 整合 | `npm run e2e`（playwright） | **24 passed**（connect ×11 + flight ×13；含 overlap×3 + RWD×2 + 空戰/F-16/PvP/1v1/競速 regression） |
+| 單元 | `npm test`（vitest） | **319 passed**（29 files；+maneuver 翻滾閃避 5；dogfight +1 breakLocksOn） |
+| 整合 | `npm run e2e`（playwright） | **25 passed**（connect ×11 + flight ×14；新增「2v2 四敵機遠方 spawn + 翻滾閃避」） |
+
+### V3 HITL 五修（2026-06-15 Sung 實玩 v3 回報）
+1. **雙人 HUD 上排互疊看不到彈藥** → 分屏時武器/彈藥卡（ModeSlot）下移到第二排靠右 + 縮字（`index.html`）。
+2. **空域限高 600 太低** → `flight-model.js` `CLIMB_CEIL 600 → 1000`（雲在 ~500，可飛上雲端）。
+3. **難閃飛彈、要多元閃避** → 新增「🌀 翻滾閃避」戰技：`maneuver.js`（純狀態機）+ `BTN.DODGE` + 空戰第三鍵；360° 滾筒翻 + 橫向 jink + `dogfight.breakLocksOn()` 拔掉咬人的飛彈鎖。鍵盤 Z。
+4. **2v2 敵機太少、一出現就咬機尾** → 2v2 敵機 2 → 4；spawn 距離 1600 → 3000m，落在玩家機頭 ±55° 前方弧內（`dogfight._spawnAnchor`）。
+5. **編隊出現+分散+隨機強度** → V 字編隊 spawn + 接近後各自追擊自然分散；每機隨機強度倍率（0.55~1.35，縮放難度/handicap）。
 
 > JSDoc 眉角（已踩過）：全形 `）`/`。` 緊接 `@param` 會讓 tsc 解析不到 tag → implicit any。標點與 `@param` 間留空格。
 
@@ -34,6 +41,11 @@
   - 根因：`.screen { inset:0 }` 在 iOS Safari 用「大 viewport」高（工具列藏起來的高）→ 置中內容底部被工具列蓋掉；且姿態泡泡固定 `min(34vh,230)` + ctx 鍵固定 min-height + grid `1fr` 不可縮，短螢幕擠爆。
   - 修法：①容器 `height:100dvh`（可視高）②grid 中列 `minmax(0,1fr)` + 容器/欄 `min-height:0` 可縮 ③`@media (max-height:430px)` 短橫螢幕收緊泡泡/按鍵/間距。加 e2e `connect.spec.js`「RWD regression」simple/complex 各一（已驗：還原 remote.html 會紅）。
   - **註**：Chromium 無 iOS 動態工具列，無法重現 inset:0 落差 → 測試用「刻意偏矮」橫螢幕高（simple 250 / complex 330）當判別器，非真機實際可視高（iPhone 12 橫拿 ~364，有餘裕）。真機最終手感仍 HITL。
+
+- **2026-06-15 雙人分屏上排 HUD 互疊、看不到彈藥（HITL Sung 實玩 v3 回報）**
+  - 症狀：兩人遊戲（`body.split` 左右半屏），上排「置中計分卡（TaskSlot）」與「右上武器/彈藥卡（ModeSlot）」在較窄的半屏會水平互疊，部分情況看不到自己剩多少彈藥。
+  - 根因：半屏只有 50vw，TaskSlot 置中 + ModeSlot 靠右，文字一長兩者右/中邊界相撞（全屏不會，因有整個寬度）。
+  - 修法：`index.html` 加 `body.split` 規則——縮字（16px）+ 把 ModeSlot 下移到第二排靠右（`top: pad+54`），與置中 TaskSlot 分排、永不打架。e2e `connect.spec.js`「分屏：兩機各自 HUD 槽位」已覆蓋分屏渲染。
 
 ## 已知非問題 / 假性紅燈（不需修，不要重查重跑）
 

@@ -114,17 +114,15 @@ describe('airspace-taipei 資料 + DRAFT 紀律（教訓 B5）', () => {
     }
   });
 
-  it('v1.1 facts / prompts / 鳥瞰知識 已 Sung 校稿定稿（draft:false）；v3.0-4 天氣任務 prompt 待校稿（draft:true）', () => {
+  it('全部 facts / prompts / 鳥瞰知識 已 Sung 校稿定稿（draft:false；含 v3.0-4 天氣任務，2026-06-15 HITL Pass）', () => {
     for (const l of airspaceTaipei.landmarks) expect(l.fact.draft).toBe(false);
     for (const k of airspaceTaipei.aerialKnowledge) expect(k.text.draft).toBe(false);
-    for (const m of airspaceTaipei.missions) {
-      // 天氣挑戰任務（v3.0-4 新增）prompt 標 DRAFT 待 Sung 校稿（B5）；其餘 v1.1 已定稿
-      expect(m.prompt.draft).toBe(!!m.weatherRequirement);
-    }
-    // 確有天氣挑戰任務（霧/雨）且都帶 DRAFT prompt
+    // v3.0-4 天氣任務 prompt 原為 DRAFT，2026-06-15 Sung 校稿定稿 → 全 draft:false（DRAFT 全清）
+    for (const m of airspaceTaipei.missions) expect(m.prompt.draft).toBe(false);
+    // 確有天氣挑戰任務（霧/雨）且也已定稿
     const wx = airspaceTaipei.missions.filter((m) => m.weatherRequirement);
     expect(wx.length).toBeGreaterThanOrEqual(2);
-    for (const m of wx) expect(m.prompt.draft).toBe(true);
+    for (const m of wx) expect(m.prompt.draft).toBe(false);
   });
 
   it('facts 簡短（≤20 字，給 6 歲）', () => {

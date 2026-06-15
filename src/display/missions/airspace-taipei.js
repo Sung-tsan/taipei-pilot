@@ -47,9 +47,9 @@ export const airspaceTaipei = {
     { id: 'practice_landing', type: MISSION_TYPES.TAKEOFF_LANDING, difficulty: 1, prompt: copy('回到松山機場，安全降落！') },
 
     // 天氣挑戰任務（v3.0-4：現有任務型 + weatherRequirement，進場覆寫成指定天氣）。
-    // ⚠️ prompt 為 DRAFT，待 Sung 校稿（教訓 B5）。
-    { id: 'weather_fog_landing', type: MISSION_TYPES.TAKEOFF_LANDING, weatherRequirement: 'fog', difficulty: 4, prompt: copy('霧來了！小心降落回松山機場。', true) },
-    { id: 'weather_rain_keelung', type: MISSION_TYPES.RING_ROUTE, riverName: '基隆河', ringCount: 4, weatherRequirement: 'rain', difficulty: 4, prompt: copy('下雨天，沿著基隆河穿過光圈！', true) },
+    // ✅ prompt 已 Sung 校稿定稿（2026-06-15 HITL Pass；DRAFT 全清，教訓 B5）。
+    { id: 'weather_fog_landing', type: MISSION_TYPES.TAKEOFF_LANDING, weatherRequirement: 'fog', difficulty: 4, prompt: copy('霧來了！小心降落回松山機場。') },
+    { id: 'weather_rain_keelung', type: MISSION_TYPES.RING_ROUTE, riverName: '基隆河', ringCount: 4, weatherRequirement: 'rain', difficulty: 4, prompt: copy('下雨天，沿著基隆河穿過光圈！') },
   ],
 
   /** 鳥瞰知識（達成穿插教學；已定稿） */

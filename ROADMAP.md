@@ -13,7 +13,7 @@
 - 已歷 v0.2.1~v0.2.4 四輪真機迭代（傾斜重力投影、首次校準、起落架、回家箭頭、畫質、雙顯示讓位協定）。
 - Sung 已雙真機 HITL，**手感大致 OK**。**待辦**：HITL 6 項收尾簽核 + DRAFT facts 校稿 → 打 `taipei-pilot-v1.0` tag。
 
-> **規劃進度（2026-06-13）**：V1→V5 北極星定稿；**v1.1 已拆 6 份 handoff**（`handoff/2026-06-13_v1.1-0~5_*.md`，design-HITL 已給過）；**V2 已拆 6 份 handoff**（`handoff/2026-06-13_v2.0-1~5 + v2.1-1`，待拍板已收斂）；**V3 已拆 4 份 handoff**（`handoff/2026-06-13_v3.0-1~4`，待拍板收斂）；**V4 已拆 4 份 handoff**（`handoff/2026-06-14_v4.0-1~2 + v4.1-1~2`，待拍板收斂；地勤車/ATR 走 §11 CC0 low-poly）。
+> **規劃進度（2026-06-13）**：V1→V5 北極星定稿；**v1.1 已拆 6 份 handoff**（`handoff/2026-06-13_v1.1-0~5_*.md`，design-HITL 已給過）；**V2 已拆 6 份 handoff**（`handoff/2026-06-13_v2.0-1~5 + v2.1-1`，待拍板已收斂）；**V3 已拆 4 份 handoff**（`handoff/2026-06-13_v3.0-1~4`，待拍板收斂）；**V4 已拆 4 份 handoff**（`handoff/2026-06-14_v4.0-1~2 + v4.1-1~2`，待拍板收斂；地勤車/ATR 走 §11 CC0 low-poly）；**V5 已拆 4 份 handoff**（`handoff/2026-06-14_v5.0-1~2 + v5.1-1~2`，待拍板收斂；真 ATC=預生成 bank 不連雲）。**← V1→V5 全部 handoff 拆解完成（24 份）。**
 >
 > **v1.1 實作進度（2026-06-13 Opus 開發 session）**：**v1.1-0~5 agent 實作全部完成並逐階段 commit**（typecheck 0 / 135 unit / 11 e2e 全綠；各階段 `handoff/*_DONE*.md` 回報）。6 槽位 HUD+remote 雙版+協定（0）／後果軸三檔+設定（1）／迫降系統（2）／任務四型+資料（3）／任務 UI+收集+大慶祝（4）／音效+回歸+DRAFT 清單（5）皆到位。
 > **待 Sung v1.1 出貨 gate**：DRAFT 校稿（`handoff/2026-06-13_v1.1_DRAFT_校稿清單.md`）+ 雙真機 HITL 全項（迫降 GO/NO-GO 最大未知數）→ 打 tag `taipei-pilot-v1.1`。**（已完成、已 tag `taipei-pilot-v1.1`）**
@@ -31,6 +31,8 @@
 > **v3.0-2 側風/亂流 + 受損百分比完成**（typecheck 0 / 306 unit / 22 e2e；`handoff/2026-06-14_v3.0-2_DONE.md`）：flight-model Input 加 wind(側風)+gust(亂流)（純加法中立→v1 位元不變、只真實模式）；consequence 加 **damagePct 0..100**（≥40 冒煙/=100 毀，碰撞/天氣/迫降同一條 damage）；`wind-damage.js` 側風劣質著陸/亂流甩出包絡受損%（容差內=0 磁吸接住）；HUD 風箭頭；chase-cam 亂流微晃 + **設定「鏡頭晃動開/關」(減暈可關)**。**含 V3 最大未知數 GO/NO-GO 暈感→幅度寧可先弱、待 Sung 複驗。** 套件先行：本階段無新 3D 系統→零新 dep。下一步 v3.0-3 生活感+日夜（GO/NO-GO perf）。
 > **v3.0-3 機場/城市生活感 + 日夜完成**（typecheck 0 / 313 unit / 23 e2e；`handoff/2026-06-14_v3.0-3_DONE.md`）：`airport-life.js` 停機坪飛機/跑道燈/窗光/風向袋/旋轉雷達/車（全 merged/instanced，只加 ~4 draws，**perf GO/NO-GO：e2e 斷言單視口 draws<300**）；`daynight.js`(純)+`WeatherRenderer.apply(type,dayParams)` compose 天氣×日夜（夜=陽光弱+冷藍+天空深藍+夜燈亮，純氛圍不動 fog）；設定頁時段選；風向袋接 v3.0-2 風向。**套件先行明示：通用件 CC0 GLB 大量引入=V4(canon §11)；本 perf gate 用 merged voxel 最穩、Kenney GLB 留 V4。取捨：移動車流=bonus 未做(不擋版本)。** 下一步 v3.0-4 天氣任務+音效+整合 → tag v3.0。
 > **v3.0-4 天氣任務+音效+整合完成 → V3 全部實作完成**（typecheck 0 / 313 unit / 24 e2e；`handoff/2026-06-14_v3.0-4_DONE.md`）：天氣挑戰任務(現有型+weatherRequirement：霧中降落/雨中基隆河，DRAFT prompt 待校)+main 當前任務覆寫天氣·結束回環境(refreshMissionWeather)；天氣音效 audio.setWeather(雨聲/側風底分級/夜底噪/霧悶 hybrid)；整合天氣接自由飛/任務、perf 仍達標。**V3 全 4 子階段 agent 實作完成、逐階段 commit、三閘全綠。v3.0-1~3 HITL 已 PASS。待 Sung v3.0-4 DRAFT prompt 校稿 + v3.0-4 HITL → 打 tag `taipei-pilot-v3.0`。** 之後 V4（民航地面，4 份 handoff 已拆；§11 GLB 正規化 spike 在 v4.0 開頭）。
+> **V3 HITL 五修（2026-06-15，Sung 實玩 v3 回報）**（typecheck 0 / 319 unit / 25 e2e；`TEST_BASELINE.md` §V3 HITL 五修）：①雙人分屏上排 HUD 互疊看不到彈藥→武器/彈藥卡下移第二排+縮字 ②空域限高 600→1000 ③**翻滾閃避戰技**（`maneuver.js` 純狀態機 + `BTN.DODGE` + 空戰第三鍵；360° 滾筒翻+橫向 jink+`dogfight.breakLocksOn` 拔飛彈鎖；鍵盤 Z） ④2v2 敵機 2→4、spawn 1600→3000m 落玩家前方弧內（不咬機尾） ⑤V 字編隊 spawn + 接近自然分散 + 每機隨機強度。**取捨（明示）：滾筒翻違反「地平線恆在畫面」減暈紀律→做成按鍵觸發特技、日常飛行不變；「分散攻擊」用編隊 spawn+既有追擊散開達成，未加編隊維持相位（避免動既有空戰測試時序）。**
+> **★ v3.0-4 兩條天氣任務 prompt 經 Sung HITL 校稿 Pass、DRAFT 全清（draft:false）；V3 雙真機 HITL 全過 + 五修 → 打 tag `taipei-pilot-v3.0`（2026-06-15，local）→ 進 V4。**
 >
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**
 
@@ -285,6 +287,8 @@
 | 2026-06-13 | V3 已拆 4 份 handoff（v3.0-1 天氣引擎／v3.0-2 側風亂流+受損%(GO/NO-GO 暈感)／v3.0-3 生活感+日夜(GO/NO-GO perf)／v3.0-4 天氣任務+音效+整合）；前置＝v1.1(後果軸/任務框架，已實作完) | 同一套節奏拆解 |
 | 2026-06-14 | V4 待拍板收斂：滑行道**手刻松山真實結構**(跑道10/28·2605m+南側平行滑行道+聯絡道+南側~6空橋門；字母代號待對 AIP/FlightAware 圖)／ATC**中文簡化保真實感+仿無線電音效**／pushback 全自動·**確認鈕在 remote**(context-keys)／起飛排序「前面那架」=環境機／地面碰撞真實接 V3 damagePct／**美術引用 §11：ATR/地勤車/空橋=CC0 low-poly(Kenney，spike-glb recipe)、地標才 voxel** | Sung 拍 |
 | 2026-06-14 | V4 已拆 4 份 handoff（v4.0-1 ATR+滑行道+地面導航／v4.0-2 到場(GO/NO-GO taxi)／v4.1-1 離場+pushback(GO/NO-GO)／v4.1-2 ATC仿真+音效+整合）；前置＝V2(plane-specs)+V3(damagePct) | 同一套節奏；研究松山真實圖 |
+| 2026-06-14 | V5 待拍板收斂：全圖巡航半自動(近目的地恢復全控)／油盡→迫降(安全溫和寬鬆·真實才油盡接 v1.1-2)／**真 ATC=預生成 bank 不連雲**(build-time Claude API 生 grounded 變體+Sung審+三件套·固定clip地板·零雲端，守 offline-LAN+child-safety)／機隊都可飛任何航線／demo 機場=松山+高雄+金門 | Sung 拍；server 純 relay 不破 offline |
+| 2026-06-14 | V5 已拆 4 份 handoff（v5.0-1 台灣全圖+航線引擎+airport-template(GO/NO-GO 全圖)／v5.0-2 航班任務+油量+收集／v5.1-1 真 ATC 預生成 bank(GO/NO-GO grounding)／v5.1-2 機隊B737-A330+其餘6機場rollout+Polish+tag）；前置＝V4(ground-ops)+V3(weatherProfile 9機場ready)+V2(plane-specs fuelSec) | **V1→V5 全 24 份 handoff 拆解完成** |
 | 2026-06-14 | **美術＝voxel + low-poly 共存**（同一 flat-shaded 玩具視覺）：開放 CC0 low-poly 通用件、保留既有 voxel 與手刻地標。**取代上方 2026-06-13「voxel 玩具視覺恆定」單一原則**；詳見 §11 | 兩者同屬 flat-shaded+無貼圖+頂點上色材質家族，可混；手寫 voxel 座標＝Claude 最燒 loading（f16.js box×24），CC0 low-poly 池深 5–10 倍。**共存＝省 loading 又免遷移、地標續用 voxel 不需 Blender** |
 | 2026-06-14 | gate「素材優先於手刻」＋「匯入 GLB 須正規化（flat-shade＋重映色票＋對齊細節密度）」（§9）；既有 voxel 全留、無 V4 遷移；scale spike 併入 v4.0 handoff | 止血反射性手刻、把「畫圖」移出 Claude；正規化是共存唯一真成本（不做才會打架） |
 
