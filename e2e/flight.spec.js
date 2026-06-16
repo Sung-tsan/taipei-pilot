@@ -169,6 +169,36 @@ test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72'
   await ctx.close();
 });
 
+// v4.0-1 P3：ATR-72 在地面 → 地面導航三合一（跟我車/綠中線燈/ATC 文字）引導到登機門。
+test('地面導航：ATR 在地面 → 滑行道路線建出 + ATC 文字框架', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 選 ATR-72（民航機）
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="atr72"]');
+  await display.click('#modeMenuClose');
+
+  // 啟動鍵盤駕駛（按 G 切起落架即 active）→ 飛機停在跑道（不起飛，維持地面）
+  await display.keyboard.press('KeyG');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 30000 },
+  ).not.toBe('flying');
+
+  // 地面導航啟用：滑行道路線（≥2 點）建出 + ATC 文字框架顯示「登機門」
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.active),
+    { timeout: 30000 },
+  ).toBe(true);
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._route.length)).toBeGreaterThan(1);
+  await expect(display.locator('#atcBanner')).toBeVisible();
+  await expect(display.locator('#atcBanner')).toContainText('塔台'); // ATC 文字框架（「松山塔台：滑行到 N 號門…」）
+  await ctx.close();
+});
+
 // v2.0-2：空戰整合——選空戰→氣球靶場 spawn→起飛→按 F 發射→彈藥扣減→HUD 顯示武器/彈藥。
 test('空戰：選空戰 → 氣球靶場 spawn → 起飛開火 → 彈藥扣減、HUD 顯示武器', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });

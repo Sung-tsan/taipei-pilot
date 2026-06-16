@@ -190,6 +190,16 @@
     /* —— 角落小地圖/雷達（v2.0 HITL：知道友機/敵機方位距離）—— */
     #minimap { position: fixed; right: 14px; bottom: 14px; z-index: 9; width: 150px; height: 150px; border-radius: 50%; background: #0b0f1899; box-shadow: 0 2px 10px #0006; display: none; }
 
+    /* —— V4 地面導航 ATC 文字框架（塔台無線電風；真 phraseology v4.1-2 填）—— */
+    #atcBanner {
+      position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+      z-index: 8; display: none; max-width: min(86vw, 720px); padding: 10px 18px; border-radius: var(--r-md);
+      background: #14322acc; color: #b8f5cf; border: 1px solid #39e36b66;
+      font-size: 16px; font-weight: 700; text-align: center; letter-spacing: .3px; text-shadow: 0 1px 2px #0008;
+      box-shadow: 0 2px 10px #0006;
+    }
+    #atcBanner.show { display: block; }
+
     /* debug 面板（?debug=1） */
     #debug { position: fixed; left: 10px; bottom: 10px; z-index: 9; font: 12px ui-monospace, monospace; color: #cfe0a8; background: #1a2233aa; padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; }
   </style>
@@ -241,6 +251,9 @@
 
   <!-- 角落小地圖/雷達（任何模式都顯示友機/敵機方位距離）-->
   <canvas id="minimap" width="160" height="160"></canvas>
+
+  <!-- V4 地面導航：塔台 ATC 文字框架（跟著綠中線燈 + 引導車滑行）-->
+  <div id="atcBanner"></div>
 
   <div id="soundHint">🔇 點一下畫面開聲音</div>
 

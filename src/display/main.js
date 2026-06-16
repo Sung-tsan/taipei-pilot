@@ -19,6 +19,8 @@ import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plan
 import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
+import { GroundNav } from './scene/ground-nav.js';
+import { makeTaxiwayGraph, gates, nearestExit, arrivalRoute, routeWorldPoints, nodeWorld } from './scene/taxiway.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -97,6 +99,11 @@ const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
 const prevDodgeBit = states.map(() => false);  // 翻滾閃避鍵上升緣偵測（per slot）
 const dodges = states.map(() => makeDodge());  // 翻滾閃避狀態機（per slot）
+
+// —— V4 地面導航（v4.0-1 P3）：松山 taxiway graph + 跟我車(GLB)/綠中線燈/ATC 文字 ——
+const taxi = makeTaxiwayGraph();
+const groundNav = new GroundNav(scene);
+let gnGate = /** @type {string|null} */ (null); // 目前導航目標登機門（活化時定一次）
 const pvpInvuln = states.map(() => 0);  // 被擊落後的無敵/暫退到期時間（per slot；PvP + 敵機共用）
 const pvpSmoke = states.map(() => false); // 冒煙中（無敵期過了要清）
 const prevLock = states.map(() => /** @type {string|null} */ (null)); // 鎖定上升緣（剛鎖到才響提示音）
@@ -789,6 +796,50 @@ function renderMinimap() {
   minimap.render(/** @type {any} */ (blips));
 }
 
+/** 離某世界點最近的登機門 id。 @param {{x:number,z:number}} p */
+function nearestGate(p) {
+  let best = /** @type {string|null} */ (null); let bd = Infinity;
+  for (const id of gates(taxi)) {
+    const w = nodeWorld(/** @type {any} */ (taxi.nodes.get(id)), RUNWAY_DIR);
+    const d = Math.hypot(w.x - p.x, w.z - p.z);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+
+/** @param {string} text ATC 文字框架（空＝隱藏） */
+function setAtc(text) {
+  const el = $('atcBanner');
+  el.textContent = text;
+  el.classList.toggle('show', !!text);
+}
+
+/**
+ * 地面導航（v4.0-1 P3）：民航機(ATR-72)在地面（自由飛/任務）→ 引導滑行到最近登機門
+ * （跟我車領路 + 綠中線燈高亮 + ATC 文字框架）。離地/換非民航機 → 收起。
+ * 完整到場/離場流程（gate 指派、停妥、pushback）由 v4.0-2 / v4.1-1 接。
+ * @param {number} now
+ */
+function updateGroundNav(now) {
+  let slot = -1;
+  if (planeId === 'atr72' && (playMode === 'free' || playMode === 'mission')) {
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      if (wasDriven[i] && states[i].mode !== 'flying' && Math.hypot(states[i].pos.x, states[i].pos.z) < 3500) { slot = i; break; }
+    }
+  }
+  if (slot < 0) { if (groundNav.active) groundNav.clear(); gnGate = null; setAtc(''); return; }
+  const p = states[slot].pos;
+  if (!groundNav.active || gnGate == null) { // 活化/換場才重算路線（避免每幀跳動）
+    gnGate = nearestGate(p);
+    const exit = nearestExit(taxi, p, RUNWAY_DIR);
+    const path = exit && gnGate ? arrivalRoute(taxi, exit, gnGate) : [];
+    const lbl = gnGate ? `🗼 松山塔台：滑行到 ${taxi.nodes.get(gnGate)?.label ?? '登機門'}，跟著綠燈與引導車。` : '';
+    groundNav.setRoute(routeWorldPoints(taxi, path, RUNWAY_DIR), lbl);
+  }
+  groundNav.update(DT, p, now);
+  setAtc(groundNav.atcText);
+}
+
 let kbWasActive = false;
 function loop(/** @type {number} */ now) {
   const frame = Math.min((now - last) / 1000, 0.25);
@@ -926,6 +977,7 @@ function loop(/** @type {number} */ now) {
   // 瞄準框（vr.render 後 → 相機矩陣已更新）：空戰時每視口一個，平常置中、鎖定後追瞄。
   for (let i = 0; i < MAX_SLOTS; i++) updateReticle(i);
   renderMinimap();
+  updateGroundNav(now); // V4 地面導航（ATR 在地面 → 跟我車/綠中線燈/ATC 文字）
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
@@ -966,6 +1018,8 @@ requestAnimationFrame(loop);
   airportLife, // e2e：驗夜燈/擺件
   setPlayMode: (/** @type {string} */ m) => applyPlayMode(m),
   get planeGlbLoaded() { return planes.map((p) => !!(/** @type {any} */ (p)._glbRoot)); }, // v4.0-1 e2e：GLB 機體載入完成
+  groundNav, // v4.0-1 P3 e2e/dev：地面導航（active/route/ATC）
+  taxiway: taxi, // v4.0-1 e2e/dev：滑行道 graph
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
   flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),

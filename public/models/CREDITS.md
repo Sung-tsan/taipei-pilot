@@ -7,6 +7,7 @@
 |------|------|------|------|--------|
 | `airliner.glb` | ATR-72（通用低面數客機**替代**，V4 民航機） | Poly Pizza `/m/8ciDd9k8wha`（原 Poly by Google，~1292 tris） | **CC-BY 3.0** | **是** |
 | `follow-me.glb` | 地面導航「跟我車」 | Kenney Car Kit 3.1（`sedan`） | **CC0 1.0** | 否（仍致謝） |
+| `Textures/colormap.png` | 上面 Kenney 車的色票（GLB 相對外參，須一起 ship） | Kenney Car Kit 3.1 | **CC0 1.0** | 否 |
 
 ## ⚠️ 授權注意（待 Sung 拍板）
 - **`airliner.glb` 為 CC-BY 3.0，需標示**（"Airplane" by Poly by Google，CC-BY 3.0）。
