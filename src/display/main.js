@@ -965,6 +965,7 @@ requestAnimationFrame(loop);
   setTimeOfDay: (/** @type {string} */ t) => { if (TIMES_OF_DAY.includes(/** @type {any} */ (t))) { dayNight.time = t; applyEnv(); } },
   airportLife, // e2e：驗夜燈/擺件
   setPlayMode: (/** @type {string} */ m) => applyPlayMode(m),
+  get planeGlbLoaded() { return planes.map((p) => !!(/** @type {any} */ (p)._glbRoot)); }, // v4.0-1 e2e：GLB 機體載入完成
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
   flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),

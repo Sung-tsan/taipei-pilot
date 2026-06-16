@@ -3,16 +3,17 @@
 import { describe, it, expect } from 'vitest';
 import { P, makePlane, makeFlatEnv, stepPlane } from '../src/display/flight/flight-model.js';
 import {
-  PLANE_SPECS, PLANE_IDS, DEFAULT_PLANE, planeSpec, flightParams,
+  PLANE_SPECS, PLANE_IDS, DEFAULT_PLANE, planeSpec, flightParams, isGlbModel,
 } from '../src/display/planes/plane-specs.js';
 
 const DT = 1 / 60;
 const env = makeFlatEnv();
 
 describe('plane-specs 登記', () => {
-  it('PLANE_IDS 至少含 t34c + f16，且每個 id 都有 spec', () => {
+  it('PLANE_IDS 至少含 t34c + f16 + atr72，且每個 id 都有 spec', () => {
     expect(PLANE_IDS).toContain('t34c');
     expect(PLANE_IDS).toContain('f16');
+    expect(PLANE_IDS).toContain('atr72');
     for (const id of PLANE_IDS) expect(PLANE_SPECS[id].id).toBe(id);
   });
 
@@ -20,7 +21,7 @@ describe('plane-specs 登記', () => {
     expect(planeSpec('does-not-exist')).toBe(PLANE_SPECS[DEFAULT_PLANE]);
   });
 
-  it('每個 spec 都有完整欄位（name/tone/dims/fuelSec/model）', () => {
+  it('每個 spec 都有完整欄位（name/tone/dims/fuelSec/model）；voxel 機有 body/gear、GLB 機有 glb/lengthM', () => {
     for (const id of PLANE_IDS) {
       const s = planeSpec(id);
       expect(typeof s.name).toBe('string');
@@ -28,20 +29,35 @@ describe('plane-specs 登記', () => {
       expect(s.dims.wingspan).toBeGreaterThan(0);
       expect(s.dims.minRunwayLength).toBeGreaterThan(0);
       expect(s.fuelSec).toBeGreaterThan(0);
-      expect(s.model.body).toBeTruthy();
-      expect(s.model.gear).toBeTruthy();
+      if (isGlbModel(s.model)) {
+        expect(s.model.glb).toMatch(/\.glb$/);
+        expect(s.model.lengthM).toBeGreaterThan(0);
+      } else {
+        expect(s.model.body).toBeTruthy();
+        expect(s.model.gear).toBeTruthy();
+      }
     }
   });
 
   it('T-34C 有螺旋槳、F-16 無（噴射機）', () => {
-    expect(planeSpec('t34c').model.prop).toBeTruthy();
-    expect(planeSpec('t34c').model.propPos).toBeTruthy();
-    expect(planeSpec('f16').model.prop).toBeUndefined();
+    const t = planeSpec('t34c').model; const f = planeSpec('f16').model;
+    expect(isGlbModel(t) || isGlbModel(f)).toBe(false); // 兩者皆 voxel
+    if (!isGlbModel(t)) { expect(t.prop).toBeTruthy(); expect(t.propPos).toBeTruthy(); }
+    if (!isGlbModel(f)) expect(f.prop).toBeUndefined();
   });
 
-  it('tone ladder：T-34C=cartoon、F-16=combat', () => {
+  it('ATR-72＝GLB 民航機（airliner tone、長跑道、寬翼展）', () => {
+    const s = planeSpec('atr72');
+    expect(s.tone).toBe('airliner');
+    expect(isGlbModel(s.model)).toBe(true);
+    expect(s.dims.minRunwayLength).toBeGreaterThan(planeSpec('f16').dims.minRunwayLength); // 民航機要更長跑道
+    expect(s.dims.wingspan).toBeGreaterThan(planeSpec('f16').dims.wingspan);
+  });
+
+  it('tone ladder：T-34C=cartoon、F-16=combat、ATR-72=airliner', () => {
     expect(planeSpec('t34c').tone).toBe('cartoon');
     expect(planeSpec('f16').tone).toBe('combat');
+    expect(planeSpec('atr72').tone).toBe('airliner');
   });
 });
 

@@ -134,6 +134,41 @@ test('玩法選單：切 free/dogfight/race + 選 F-16 → 起飛、HUD 顯示 F
   await ctx.close();
 });
 
+// v4.0-1 P1：選 ATR-72（民航 GLB 機體）→ GLB 過 normalize 管線載入 → 起飛、HUD 顯示 ATR-72。
+test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  const errors = /** @type {string[]} */ ([]);
+  display.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 選 ATR-72 → planeId=atr72
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="atr72"]');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.planeId)).toBe('atr72');
+  await display.click('#modeMenuClose');
+
+  // GLB 機體 async 載入完成（過 normalize/fitToLength 管線 → 掛進 plane group）
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.planeGlbLoaded[0]),
+    { timeout: 30000 },
+  ).toBe(true);
+
+  // 鍵盤駕駛紅機（ATR-72，重機起飛滾行較長）→ 起飛
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+
+  await expect(display.locator('#hud-0 .mode-slot')).toContainText('ATR-72');
+  // GLB 載入/normalize 不得丟 console error
+  expect(errors.filter((e) => /glb|gltf|airliner|model/i.test(e))).toEqual([]);
+  await ctx.close();
+});
+
 // v2.0-2：空戰整合——選空戰→氣球靶場 spawn→起飛→按 F 發射→彈藥扣減→HUD 顯示武器/彈藥。
 test('空戰：選空戰 → 氣球靶場 spawn → 起飛開火 → 彈藥扣減、HUD 顯示武器', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
