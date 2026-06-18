@@ -5,6 +5,7 @@ import {
   makeTaxiwayGraph, shortestPath, pathLength, gates, nodesOfKind,
   nearestExit, arrivalRoute, departureRoute, routeWorldPoints, nodeWorld, isConnected,
   selectArrivalExit, exitParallel, runwayCoord, assignArrivalGate,
+  gateParkPose, isParkedAtGate,
 } from '../src/display/scene/taxiway.js';
 
 // 跑道方向（heading 100°，與 airport.js RUNWAY_DIR 同制）
@@ -128,6 +129,34 @@ describe('松山滑行道網路', () => {
       const gate = /** @type {string} */ (assignArrivalGate(g, seq));
       expect(arrivalRoute(g, 'x2', gate).at(-1)).toBe(gate); // 中段脫離道 → 指派門
     }
+  });
+
+  // —— v4.0-2 P3 停妥判定 ——
+  it('gateParkPose：機鼻朝航廈（約垂直跑道），位置＝門世界座標', () => {
+    const g = makeTaxiwayGraph();
+    const node = /** @type {any} */ (g.nodes.get('g3'));
+    const pose = gateParkPose(node, RUNWAY_DIR);
+    const w = nodeWorld(node, RUNWAY_DIR);
+    expect(pose.x).toBeCloseTo(w.x, 6);
+    expect(pose.z).toBeCloseTo(w.z, 6);
+    // 朝向約垂直跑道（跑道 heading 100° → 停妥 heading ~10°，差 ~90°）
+    const runwayHeading = Math.atan2(RUNWAY_DIR.x, -RUNWAY_DIR.z); // {sin,-cos} 反推
+    const dh = Math.atan2(Math.sin(pose.heading - runwayHeading), Math.cos(pose.heading - runwayHeading));
+    expect(Math.abs(Math.abs(dh) - Math.PI / 2)).toBeLessThan(0.2); // ≈90°
+  });
+
+  it('isParkedAtGate：在門框內 + 朝向對 + 速度≈0 → 停妥；偏位/移動/背對 → 否', () => {
+    const g = makeTaxiwayGraph();
+    const node = /** @type {any} */ (g.nodes.get('g3'));
+    const pose = gateParkPose(node, RUNWAY_DIR);
+    /** @param {number} dx @param {number} dz @param {number} h @param {number} speed */
+    const at = (dx, dz, h, speed) => ({ pos: { x: pose.x + dx, z: pose.z + dz }, heading: h, speed });
+    expect(isParkedAtGate(at(0, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(true);        // 正停妥
+    expect(isParkedAtGate(at(0, 0, pose.heading + 0.7, 0), node, RUNWAY_DIR)).toBe(true);  // 斜進 ~40° 仍算
+    expect(isParkedAtGate(at(0, 0, pose.heading, 8), node, RUNWAY_DIR)).toBe(false);       // 還在動
+    expect(isParkedAtGate(at(40, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(false);      // 離門太遠
+    expect(isParkedAtGate(at(0, 0, pose.heading + Math.PI, 0), node, RUNWAY_DIR)).toBe(false); // 背對
+    expect(isParkedAtGate(at(0, 0, pose.heading + Math.PI / 2, 0), node, RUNWAY_DIR)).toBe(false); // 側對
   });
 
   it('防呆：未知節點 → 空路徑、相同起終點 → 單點', () => {

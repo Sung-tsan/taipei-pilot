@@ -261,6 +261,36 @@ export function exitParallel(graph, exitId) {
 }
 
 /**
+ * 登機門停妥目標姿態（v4.0-2 P3）：世界座標 + 機鼻朝向（nose-in 朝航廈＝−lateral 方向）。
+ * departure（spawn at gate）與 arrival（停妥判定）共用同一停機姿態。
+ * @param {TaxiNode} gateNode @param {{x:number,z:number}} runwayDir
+ * @returns {{x:number, z:number, heading:number}}
+ */
+export function gateParkPose(gateNode, runwayDir) {
+  const w = nodeWorld(gateNode, runwayDir);
+  // 朝航廈＝lateral 遞減方向 (runwayDir.z, -runwayDir.x)；heading 使 forward={sin h,-cos h} 對齊之。
+  return { x: w.x, z: w.z, heading: Math.atan2(runwayDir.z, runwayDir.x) };
+}
+
+/**
+ * 是否在指定門「停妥」（v4.0-2 P3 停妥判定）：位置在門框內 + 機鼻朝向對 + 速度≈0。
+ * @param {{pos:{x:number,z:number}, heading:number, speed:number}} plane
+ * @param {TaxiNode} gateNode @param {{x:number,z:number}} runwayDir
+ * @param {{posTol?:number, headingTol?:number, speedTol?:number}} [opts]
+ *   posTol＝門框半徑(m)；headingTol＝朝向容差(rad)；speedTol＝視為靜止的速度(m/s)
+ * @returns {boolean}
+ */
+export function isParkedAtGate(plane, gateNode, runwayDir, opts = {}) {
+  // 容差偏寬（6 歲）：飛機沿 apron→gate 斜進，朝向約 ±45° 仍算 nose-in；只擋「背對/側對」。
+  const { posTol = 25, headingTol = 1.0, speedTol = 1.5 } = opts;
+  if (plane.speed > speedTol) return false;
+  const pose = gateParkPose(gateNode, runwayDir);
+  if (Math.hypot(plane.pos.x - pose.x, plane.pos.z - pose.z) > posTol) return false;
+  const dh = Math.atan2(Math.sin(plane.heading - pose.heading), Math.cos(plane.heading - pose.heading));
+  return Math.abs(dh) <= headingTol;
+}
+
+/**
  * 到場滑行路線：落地脫離接點 → 指定登機門（節點 id 路徑）。
  * @param {TaxiGraph} graph @param {string} exitId @param {string} gateId
  */

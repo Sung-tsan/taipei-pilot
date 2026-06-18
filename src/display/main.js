@@ -20,7 +20,7 @@ import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
 import { GroundNav } from './scene/ground-nav.js';
-import { makeTaxiwayGraph, gates, nearestNode, arrivalRoute, routeWorldPoints, nodeWorld, selectArrivalExit, exitParallel, assignArrivalGate } from './scene/taxiway.js';
+import { makeTaxiwayGraph, gates, nearestNode, arrivalRoute, routeWorldPoints, nodeWorld, selectArrivalExit, exitParallel, assignArrivalGate, isParkedAtGate } from './scene/taxiway.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -111,6 +111,7 @@ let arrivalExit = /** @type {string|null} */ (null); // 落地選定的脫離道
 let arrivalGate = /** @type {string|null} */ (null); // 塔台指派登機門 id（P2；落地時定一次）
 let arrivalSeq = 0; // 到場序（P2 輪派 gate；跨多次到場遞增＝每次停不同門）
 const ARRIVAL_REACH_M = 70; // m 視為「抵達脫離道接點」的容差（轉 taxi 階段）
+const BRIDGE_LEN = 58;      // m 空橋長（航廈端 → 登機門；P3 靠橋）
 // P4 地面碰撞「越界」：偏離綠線太遠（taxi 速度域）→ 真實接 damagePct、安全/溫和提示重來。
 const TAXI_OFF_M = 55;     // m 偏離綠線判越界（HITL 可調）
 const TAXI_OFF_PCT = 10;   // 越界受損%（真實模式）
@@ -865,8 +866,27 @@ function updateGroundNav(now) {
   const p = states[slot].pos;
   const gateLabel = taxi.nodes.get(arrivalGate ?? '')?.label ?? '登機門'; // P2 指派門名（到場流程）
 
-  // v4.0-2 P1：到場「脫離跑道」階段——綠線帶到前方脫離道、轉出跑道；抵達後轉「滑到 gate」。
-  if (arrivalPhase === 'exit' && arrivalExit) {
+  // v4.0-2 P3 停妥判定：taxi 階段 + 在指派門框內 + 朝向對 + 速度≈0 → 停妥靠橋（一次性）。
+  if (arrivalPhase === 'taxi' && arrivalGate) {
+    const gNode = taxi.nodes.get(arrivalGate);
+    if (gNode && isParkedAtGate(states[slot], /** @type {any} */ (gNode), RUNWAY_DIR)) {
+      arrivalPhase = 'parked';
+      groundNav.clear(); // 收綠線/引導車（不再導航）
+      const gateW = nodeWorld(/** @type {any} */ (gNode), RUNWAY_DIR);
+      const termDir = { x: RUNWAY_DIR.z, z: -RUNWAY_DIR.x }; // 朝航廈（−lateral）
+      groundNav.dock({ x: gateW.x + termDir.x * BRIDGE_LEN, z: gateW.z + termDir.z * BRIDGE_LEN }, gateW); // 空橋伸出
+      toast(slot, `🛬 停妥靠橋！歡迎抵達松山 ${gNode.label ?? ''}`);
+      audio.landingChime(); // Settle 著地感
+      setAtc(`🗼 ${gNode.label ?? '登機門'} 已靠橋，歡迎來到松山！`);
+    }
+  }
+
+  // 到場流程階段分派：parked（停妥，僅跑空橋動畫）／exit（P1 脫離跑道）／taxi·none（滑到 gate）。
+  if (arrivalPhase === 'parked') {
+    // 停妥：不再導航，僅讓 groundNav.update() 跑空橋延伸動畫；ATC 維持「已靠橋」。
+    groundNav.update(DT, p, now);
+    return;
+  } else if (arrivalPhase === 'exit' && arrivalExit) { // P1：脫離跑道——綠線帶到前方脫離道、轉出跑道
     const exitNode = taxi.nodes.get(arrivalExit);
     const exitW = exitNode ? nodeWorld(/** @type {any} */ (exitNode), RUNWAY_DIR) : null;
     if (exitW && Math.hypot(exitW.x - p.x, exitW.z - p.z) < ARRIVAL_REACH_M) {

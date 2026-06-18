@@ -32,6 +32,18 @@ export class GroundNav {
     this._lights.visible = false;
     scene.add(this._lights);
 
+    // 空橋（v4.0-2 P3 靠橋）：停妥時從航廈端朝飛機伸出的單盒，~1.2s 延伸動畫。
+    // 幾何沿 +X 為 [0,1] 單位長（translate +0.5），dock 時量 anchor→tip 長度填進 scale.x。
+    this._bridgeHolder = new THREE.Group();
+    this._bridgeHolder.visible = false;
+    const bridgeGeo = new THREE.BoxGeometry(1, 4, 7).translate(0.5, 3, 0);
+    this._bridge = new THREE.Mesh(bridgeGeo, new THREE.MeshLambertMaterial({ color: '#cdc8bd' }));
+    this._bridge.scale.set(0.001, 1, 1);
+    this._bridgeHolder.add(this._bridge);
+    scene.add(this._bridgeHolder);
+    this._bridgeLen = 1;   // dock 時量得的 anchor→tip 長度（m）
+    this._bridgeK = 0;     // 延伸進度 0→1
+
     // 跟我車（CC0 GLB，async；過 normalize 管線）
     this._carReady = false;
     this._carHolder = new THREE.Group();
@@ -67,7 +79,28 @@ export class GroundNav {
     this._lights.visible = false;
     this._lights.count = 0;
     this._carHolder.visible = false;
+    this.undock();
   }
+
+  /**
+   * 靠橋（v4.0-2 P3）：從航廈端 anchor 朝飛機 tip 伸出空橋，update() 內 ~1.2s 延伸動畫。
+   * @param {{x:number,z:number}} anchor 航廈端 @param {{x:number,z:number}} tip 飛機端（登機門）
+   */
+  dock(anchor, tip) {
+    const dx = tip.x - anchor.x, dz = tip.z - anchor.z;
+    this._bridgeLen = Math.hypot(dx, dz) || 1;
+    this._bridgeHolder.position.set(anchor.x, 0, anchor.z);
+    this._bridgeHolder.rotation.y = Math.atan2(-dz, dx); // local +X → (dx,dz)
+    this._bridgeK = 0;
+    this._bridge.scale.set(0.001, 1, 1);
+    this._bridgeHolder.visible = true;
+  }
+
+  /** 收回空橋（離開/換場）。 */
+  undock() { this._bridgeHolder.visible = false; this._bridgeK = 0; }
+
+  /** 空橋是否已伸出（e2e/dev）。 */
+  get docked() { return this._bridgeHolder.visible && this._bridgeK > 0.99; }
 
   /** ATC 指示文字（HUD 顯示）；未啟用＝空。 */
   get atcText() { return this.active ? this._label : ''; }
@@ -96,6 +129,11 @@ export class GroundNav {
    * @param {number} dt @param {{x:number,z:number}|null} playerPos @param {number} now ms
    */
   update(dt, playerPos, now) {
+    // 空橋延伸（~1.2s）——獨立於路線（停妥後綠線收起、空橋續存）。
+    if (this._bridgeHolder.visible && this._bridgeK < 1) {
+      this._bridgeK = Math.min(1, this._bridgeK + (Number.isFinite(dt) ? dt : 0) / 1.2);
+      this._bridge.scale.x = Math.max(0.001, this._bridgeLen * this._bridgeK);
+    }
     if (!this.active) return;
     this._t = (Number.isFinite(now) ? now : 0) / 1000;
     if (this._carReady && playerPos) {
