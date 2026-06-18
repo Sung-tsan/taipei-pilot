@@ -74,11 +74,12 @@ export const PLANE_SPECS = {
       V_MIN: 32, V_GLIDE: 30, V_ROTATE: 46,
       V_MAX: 82, V_MAX_GEAR: 62,
       GROUND_TOP: 46, GROUND_ACCEL: 9, GROUND_DRAG: 5, ACCEL: 7,
-      MAX_BANK: 0.6, BANK_RATE: 1.3, MAX_PITCH: 0.3, PITCH_RATE: 0.8, TURN_G: 9,
+      // 轉向靈活度（HITL 2026-06-16：原本太鈍）：傾角更大、滾更快、轉更緊；仍比 F-16 重穩。
+      MAX_BANK: 0.95, BANK_RATE: 2.6, MAX_PITCH: 0.35, PITCH_RATE: 1.1, TURN_G: 13,
     },
     dims: { wingspan: 27, minRunwayLength: 1200 }, // 真實翼展 ~27m、需長跑道（迫降諸元）
     fuelSec: 1500, // 民航航程長
-    model: { glb: '/models/airliner.glb', lengthM: 27, yaw: 0 }, // yaw 待 HITL 校正機鼻朝向
+    model: { glb: '/models/airliner.glb', lengthM: 27, yaw: Math.PI }, // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-16）
     unlock: { flightMin: 30, landings: 10 }, // v1.2 解鎖：民航機進階門檻
   },
 };

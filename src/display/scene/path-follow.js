@@ -77,3 +77,24 @@ export function followPose(pts, playerPos, leadDist) {
   const along = projectDistance(pts, playerPos);
   return pointAtDistance(pts, along + (Number.isFinite(leadDist) ? leadDist : 0));
 }
+
+/**
+ * 點 p 到折線的最近（垂直）距離（公尺）。地面導航「越界」偵測：偏離綠線多遠。
+ * @param {P2[]} pts @param {P2} p @returns {number}
+ */
+export function nearestDistance(pts, p) {
+  if (!pts || pts.length === 0) return 0;
+  if (pts.length === 1) return Math.hypot(p.x - pts[0].x, p.z - pts[0].z);
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]; const b = pts[i];
+    const dx = b.x - a.x; const dz = b.z - a.z;
+    const segLen2 = dx * dx + dz * dz || 1e-9;
+    let t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / segLen2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const px = a.x + dx * t; const pz = a.z + dz * t;
+    const d2 = (p.x - px) * (p.x - px) + (p.z - pz) * (p.z - pz);
+    if (d2 < best) best = d2;
+  }
+  return Math.sqrt(best);
+}

@@ -134,7 +134,7 @@ export class PlaneEntity {
     loadToyModel(desc.glb, { lengthM: desc.lengthM }).then((tmpl) => {
       if (token !== this._loadToken) return; // 已切換到別的模型
       const inst = tmpl.clone(true);
-      inst.rotation.y = desc.yaw ?? 0;       // 機鼻朝向修正（待 HITL 校正）
+      inst.rotation.y = desc.yaw ?? 0;       // 機鼻朝向修正
       this.group.add(inst);
       this._glbRoot = inst;
     }).catch(() => { /* 載入失敗：保持無機體，不爆 */ });
@@ -159,7 +159,9 @@ export class PlaneEntity {
     this.group.rotation.z = -s.bank + (this.rollSpin || 0); // 翻滾閃避：疊上 360° 滾筒翻
     if (this.prop) this.prop.rotation.z += (6 + throttle * 30) * dt; // 噴射機/GLB 無螺旋槳
 
-    // 起落架收放動畫（~0.8s 平滑縮放）；GLB 機無獨立起落架 mesh → 跳過（gear===null）
+    // 起落架收放動畫（~0.8s 平滑縮放）：voxel 機整組 scale.y 縮進機腹。
+    // GLB 機（ATR）此模型把 3 根支柱烤進機身網格、無法單獨隱藏 → 起落架恆放下（見 POLISH_BACKLOG）；
+    // 「收輪飛較快」仍由 flight-model gearDown 速度上限生效（視覺不收）。
     if (this.gear) {
       const gearTarget = s.gearDown ? 1 : 0.04;
       this._gearK += (gearTarget - this._gearK) * expDamp(4, dt);

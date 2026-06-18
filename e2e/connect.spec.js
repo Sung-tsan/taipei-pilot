@@ -252,6 +252,11 @@ test('設定頁：切換後果模式 + ❤️ 上限 → conseq/localStorage/Sta
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.conseq[0].mode)).toBe('gentle');
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.conseq[0].heartsMax)).toBe(2);
 
+  // 天氣偏好：鎖定「晴」→ 立即套用 weather=clear（HITL 2026-06-16：雨要能關）
+  await display.click('#weatherRow [data-weather="clear"]');
+  await expect.poll(() => display.evaluate(() => localStorage.getItem('tp_weather_pref'))).toBe('clear');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.weather)).toBe('clear');
+
   await display.click('#settingsClose');
   await expect(display.locator('#settings')).toBeHidden();
 

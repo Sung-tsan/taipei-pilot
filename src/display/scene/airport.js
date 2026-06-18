@@ -2,7 +2,11 @@
 // 松山機場：跑道 10/28（真實諸元 2605m、方位 ~100°）、停機坪、小塔台。
 // 世界原點 = 跑道中心。
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildVoxelGeometry, paintGeometry, voxelMaterial } from '../../voxel/build.js';
+import { makeTaxiwayGraph } from './taxiway.js';
+
+const TAXIWAY_WIDTH = 44; // m 滑行道鋪面寬（綠中線導航跑在上面）
 
 export const RUNWAY = {
   headingDeg: 100,         // RWY 10 起飛方向
@@ -68,6 +72,29 @@ export function makeAirport() {
   );
   apron.position.set(0, 0.15, -(RUNWAY.width / 2 + 160));
   group.add(apron);
+
+  // 滑行道鋪面（v4.0-1）：沿 taxiway graph 每條邊鋪一條鋪面帶，讓地面導航綠中線/跟我車落在鋪面上
+  // （非跑道中線的邊；座標＝local along=x / lateral=z，與 runway/apron 同 local 框、靠 group 旋轉到世界）。
+  // merge 成 1 顆（perf）。graph 是純資料（與 main 用的同一份，deterministic）。
+  const tw = makeTaxiwayGraph();
+  const stripGeos = [];
+  for (const [a, b] of tw.edges) {
+    const na = tw.nodes.get(a); const nb = tw.nodes.get(b);
+    if (!na || !nb) continue;
+    if (Math.abs(na.lateral) < 1 && Math.abs(nb.lateral) < 1) continue; // 跑道中線邊：跑道已鋪，跳過
+    const dAlong = nb.along - na.along; const dLat = nb.lateral - na.lateral;
+    const len = Math.hypot(dAlong, dLat);
+    if (len < 1) continue;
+    const g = new THREE.BoxGeometry(len + TAXIWAY_WIDTH, 0.3, TAXIWAY_WIDTH); // +寬度讓轉角接縫蓋住
+    g.rotateY(Math.atan2(-dLat, dAlong));
+    g.translate((na.along + nb.along) / 2, 0.16, (na.lateral + nb.lateral) / 2);
+    stripGeos.push(g);
+  }
+  if (stripGeos.length) {
+    const taxiways = new THREE.Mesh(mergeGeometries(stripGeos), new THREE.MeshLambertMaterial({ color: '#8f8f87' }));
+    stripGeos.forEach((g) => g.dispose());
+    group.add(taxiways);
+  }
 
   // 航廈 + 塔台（voxel）
   const buildings = buildVoxelGeometry({

@@ -9,7 +9,7 @@
 
 ## ⚙️ Harvest 機制（dev session 請照做）
 
-**每當你（實作 session）記下一個「明示取捨（非降級）／資產缺口／Phase-2 留待」，就順手 append 到下面對應維度。** 這樣到 V5 實作完，V6 清單已自己收齊——不必結尾才從頭翻 log。
+**每當你（實作 session）記下一個「明示取捨（非降級）／資產缺口／Phase-2 留待／代碼可精簡處（長太大·可抽·重複·死碼）」，就順手 append 到下面對應維度。** 這樣到 V5 實作完，V6 清單已自己收齊——不必結尾才從頭翻 log。
 
 Append 格式（一行）：
 
@@ -22,13 +22,13 @@ Append 格式（一行）：
 
 ## 拆解時機
 
-- **現在＝立框架 + 種子**（下方 9 維度）。
+- **現在＝立框架 + 種子**（下方 10 維度）。
 - **V6 詳細 handoff 拆解** ＝ **V5 實作完、backlog 收齊後**，照維度拆（near-term 框架、far-term 具體；backlog 還會長）。
 - 拆解照同一套節奏：待拍板收斂 → 一次交付 handoff → 每階段本地全綠 + Sung 雙真機 HITL。
 
 ---
 
-## 9 維度 backlog
+## 10 維度 backlog
 
 ### 1. 資產補完（CC0 取樣 SFX / art 缺口）
 - [ ] 擬真爆炸真·取樣 clip 待 CC0 drop — V2 音效 — 合成已逼近，待 CC0 音效資產
@@ -49,7 +49,7 @@ Append 格式（一行）：
 - [ ] 音效個性 tone ladder 一致（教練卡通→戰鬥擬真→民航仿真）
 - [ ] Tactile / haptic 政策跨版本一致
 - [ ] voxel × CC0 low-poly 色票重映一致（各機隊/機場 GLB 進來後總檢，§11 主槓桿）
-- [ ] ATR GLB 機鼻朝向 yaw + 降飽和/偏暖強度 HITL 校正 — v4.0-1 — yaw=0、saturation/warm 為預設值，待真機目視微調（glb-model.js / plane-specs atr72.model.yaw）
+- [ ] GLB 降飽和/偏暖強度 + 跟我車朝向微調 — v4.0-1 — ATR 機鼻朝向已修(yaw=π，HITL 2026-06-16)；saturation/warm 預設值堪用、跟我車 yaw 待真機確認
 
 ### 4. 手感終調（旋鈕一次跟孩子調）
 - [ ] 側風 / 亂流幅度 + 暈（v3.0-2，幅度先弱待調）
@@ -73,8 +73,17 @@ Append 格式（一行）：
 - [ ] 入場 transition
 - [ ] 各模式表面層次
 - [ ] 微互動（滾筒翻特技手感等）
-- [ ] GLB 民航機起落架收放動畫 — v4.0-1 — voxel 機有 scale 收放、GLB 機暫靜態（飛行速度上限仍由 flight-model gearDown 生效）
+- [ ] GLB 民航機完整起落架收放（含支柱）— v4.0-1 — 此 CC-BY 模型 3 根支柱烤進機身網格(Airplane1 單一 mesh)、無法單獨隱藏；目前**恆放下**(gearDown 速度上限仍生效)。真收放需 separable-gear 或無支柱的模型（連動「換純 CC0 客機 GLB」項）
 - [ ] （對應 DESIGN_CRAFT_GUIDE Phase-2 backlog 的 web 版）
+
+### 10. 代碼精緻度 / 優化精簡（holistic code review）
+> V6 對**全 codebase** 跑一次整體 review（review agents 全掃／`/simplify` 逐 diff；`/code-review` 適合逐 PR）：找重複、死碼、過度複雜、漏掉的重用、可精簡/可優化處。
+> **🔴 鐵律：重構不可破壞手感位元**——這款手感是核心資產，refactor 必須 tests 全綠 + Sung HITL 手感不變（沿用 dev「純加法＋中立預設、位元不變」紀律）。
+- [ ] `src/display/main.js`（**1053 行 god-file**，5 版整合 glue 累積）→ 評估解耦（per-mode controllers／weather·combat·ground glue 抽出）— 掃描 2026-06-15；**待 feature-complete 再拆（現拆白工＋動手感）**
+- [ ] `src/display/combat/dogfight.js`（581 行）→ 戰鬥編排，評估可拆
+- [ ] 全 codebase 重複/死碼/過度複雜掃描（feature-complete 後）
+- [ ] perf 熱點優化（接維度 5 全局效能）
+- ✅ 現況健康讀數（2026-06-15 掃）：8490 LOC、tests 4250（~0.5 比，健康）、**0 TODO/FIXME**（取捨外記紀律佳）；唯一明顯目標＝main.js god-file
 
 ---
 

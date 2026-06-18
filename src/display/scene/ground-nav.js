@@ -4,7 +4,7 @@
 // 純路徑數學在 path-follow.js（已測）；本檔只把它接上 Three（glue，瀏覽器/e2e 驗）。
 import * as THREE from 'three';
 import { loadToyModel } from '../assets/glb-model.js';
-import { followPose, pointAtDistance, polylineLength } from './path-follow.js';
+import { followPose, pointAtDistance, polylineLength, nearestDistance } from './path-follow.js';
 
 const CAR_GLB = '/models/follow-me.glb';
 const CAR_LEN = 4.6;       // 跟我車目標長度（Kenney sedan）
@@ -71,6 +71,9 @@ export class GroundNav {
 
   /** ATC 指示文字（HUD 顯示）；未啟用＝空。 */
   get atcText() { return this.active ? this._label : ''; }
+
+  /** 偏離綠線（路線中線）的垂直距離（公尺）；未啟用＝0。P4 地面碰撞「越界」用。 @param {{x:number,z:number}|null} pos */
+  offRouteDistance(pos) { return this.active && pos ? nearestDistance(this._route, pos) : 0; }
 
   /** 沿路線鋪綠中線燈（等距）。 */
   _buildLights() {

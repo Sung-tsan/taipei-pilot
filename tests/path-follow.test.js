@@ -2,7 +2,7 @@
 // 折線跟隨數學（地面導航跟我車）：總長 / 定距取點 / 投影距離 / 領先 pose。
 import { describe, it, expect } from 'vitest';
 import {
-  polylineLength, pointAtDistance, segHeading, projectDistance, followPose,
+  polylineLength, pointAtDistance, segHeading, projectDistance, followPose, nearestDistance,
 } from '../src/display/scene/path-follow.js';
 
 // 一條沿 +X 的直線折線（z=0）：(0,0)-(100,0)-(200,0)
@@ -39,6 +39,12 @@ describe('path-follow 折線跟隨', () => {
     expect(a.heading).toBeCloseTo(Math.PI / 2, 6); // 沿 +X
     const end = followPose(line, { x: 190, z: 0 }, 50); // 190+50 夾到 200
     expect(end.x).toBeCloseTo(200, 6);
+  });
+
+  it('nearestDistance：垂直距離（越界偵測）；線上≈0、偏移=橫距', () => {
+    expect(nearestDistance(line, { x: 50, z: 0 })).toBeCloseTo(0, 6);   // 線上
+    expect(nearestDistance(line, { x: 50, z: 30 })).toBeCloseTo(30, 6); // 偏 30m
+    expect(nearestDistance(line, { x: 250, z: 0 })).toBeCloseTo(50, 6); // 過末端 → 到終點 50m
   });
 
   it('防呆：空/單點折線不爆', () => {

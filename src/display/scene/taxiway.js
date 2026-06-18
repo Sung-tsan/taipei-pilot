@@ -188,6 +188,21 @@ export function nearestExit(graph, worldPos, runwayDir) {
 }
 
 /**
+ * 離某世界點最近的「任一節點」id（地面任意位置接上 graph 用；含跑道門檻）。
+ * @param {TaxiGraph} graph @param {{x:number,z:number}} worldPos @param {{x:number,z:number}} runwayDir
+ * @returns {string|null}
+ */
+export function nearestNode(graph, worldPos, runwayDir) {
+  let best = null; let bd = Infinity;
+  for (const [id, node] of graph.nodes) {
+    const w = nodeWorld(node, runwayDir);
+    const d = Math.hypot(w.x - worldPos.x, w.z - worldPos.z);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+
+/**
  * 到場滑行路線：落地脫離接點 → 指定登機門（節點 id 路徑）。
  * @param {TaxiGraph} graph @param {string} exitId @param {string} gateId
  */

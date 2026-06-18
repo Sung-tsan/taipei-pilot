@@ -162,6 +162,11 @@ test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72'
     { timeout: 60000 },
   ).toBe('flying');
   await display.keyboard.up('Space');
+  await display.keyboard.press('KeyG'); // 收輪指令：gearDown 狀態切換（此 GLB 視覺恆放下，見 backlog）→ 不得丟錯
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].gearDown),
+    { timeout: 5000 },
+  ).toBe(false);
 
   await expect(display.locator('#hud-0 .mode-slot')).toContainText('ATR-72');
   // GLB 載入/normalize 不得丟 console error
@@ -196,6 +201,37 @@ test('地面導航：ATR 在地面 → 滑行道路線建出 + ATC 文字框架'
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._route.length)).toBeGreaterThan(1);
   await expect(display.locator('#atcBanner')).toBeVisible();
   await expect(display.locator('#atcBanner')).toContainText('塔台'); // ATC 文字框架（「松山塔台：滑行到 N 號門…」）
+  // 跟我車 GLB 載入完成（過 normalize 管線）
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._carReady),
+    { timeout: 30000 },
+  ).toBe(true);
+  await ctx.close();
+});
+
+// v4.0-1 P4：地面碰撞「越界」——ATR 偏離綠線太遠 → 觸發越界事件（真實接 damagePct、安全/溫和提示）。
+test('地面碰撞越界：ATR 偏離綠線 → 觸發越界事件', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="atr72"]');
+  await display.click('#modeMenuClose');
+  await display.keyboard.press('KeyG'); // 駕駛、停在跑道（地面）
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.active),
+    { timeout: 30000 },
+  ).toBe(true);
+
+  // teleport 到遠離綠線的草地（仍在機場 3.5km 內、維持地面）→ 越界
+  await display.evaluate(() => { const s = /** @type {any} */ (window).__tp.states[0]; s.pos.x = 1500; s.pos.z = -1500; });
+  await expect.poll(
+    () => display.evaluate(() => !!/** @type {any} */ (window).__tp.lastTaxiOff),
+    { timeout: 15000 },
+  ).toBe(true);
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.lastTaxiOff.off)).toBeGreaterThan(55);
   await ctx.close();
 });
 
