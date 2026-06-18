@@ -203,6 +203,51 @@ export function nearestNode(graph, worldPos, runwayDir) {
 }
 
 /**
+ * 世界座標 → 跑道座標 {along, lateral}（nodeWorld 的逆；同制 NORMAL=(-dir.z, dir.x)）。
+ * @param {{x:number,z:number}} worldPos @param {{x:number,z:number}} runwayDir
+ * @returns {{along:number, lateral:number}}
+ */
+export function runwayCoord(worldPos, runwayDir) {
+  const nx = -runwayDir.z, nz = runwayDir.x;
+  return {
+    along: worldPos.x * runwayDir.x + worldPos.z * runwayDir.z,
+    lateral: worldPos.x * nx + worldPos.z * nz,
+  };
+}
+
+/**
+ * 落地後選脫離道（v4.0-2 P1「落地→脫離」）：滾行方向「前方」最近的 exit 節點
+ * （6 歲不回頭——永遠往前找下一個脫離道轉出跑道）；前方無 exit → 退回最近 exit。
+ * @param {TaxiGraph} graph @param {{x:number,z:number}} worldPos 觸地點（世界）
+ * @param {{x:number,z:number}} headingVec 機頭前向＝{sin(heading), -cos(heading)}
+ * @param {{x:number,z:number}} runwayDir RUNWAY_DIR
+ * @returns {string|null} exit 節點 id（無 exit → null）
+ */
+export function selectArrivalExit(graph, worldPos, headingVec, runwayDir) {
+  const me = runwayCoord(worldPos, runwayDir);
+  const sign = Math.sign(headingVec.x * runwayDir.x + headingVec.z * runwayDir.z) || 1; // 沿 along 滾行方向
+  const exits = nodesOfKind(graph, 'exit')
+    .map((id) => ({ id, node: /** @type {TaxiNode} */ (graph.nodes.get(id)) }));
+  if (!exits.length) return null;
+  const ahead = exits.filter(({ node }) => (node.along - me.along) * sign > 0); // 前方
+  const pool = ahead.length ? ahead : exits;                                    // 無前方→全部（退回最近）
+  let best = null; let bd = Infinity;
+  for (const { id, node } of pool) {
+    const d = Math.abs(node.along - me.along);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return best;
+}
+
+/** 脫離道相鄰的平行滑行道節點 id（綠線轉出跑道用）。 @param {TaxiGraph} graph @param {string} exitId */
+export function exitParallel(graph, exitId) {
+  for (const v of graph.adj.get(exitId) ?? []) {
+    if (graph.nodes.get(v)?.kind === 'parallel') return v;
+  }
+  return null;
+}
+
+/**
  * 到場滑行路線：落地脫離接點 → 指定登機門（節點 id 路徑）。
  * @param {TaxiGraph} graph @param {string} exitId @param {string} gateId
  */

@@ -4,10 +4,14 @@ import { describe, it, expect } from 'vitest';
 import {
   makeTaxiwayGraph, shortestPath, pathLength, gates, nodesOfKind,
   nearestExit, arrivalRoute, departureRoute, routeWorldPoints, nodeWorld, isConnected,
+  selectArrivalExit, exitParallel, runwayCoord,
 } from '../src/display/scene/taxiway.js';
 
 // 跑道方向（heading 100°，與 airport.js RUNWAY_DIR 同制）
 const RUNWAY_DIR = { x: Math.sin((100 * Math.PI) / 180), z: -Math.cos((100 * Math.PI) / 180) };
+const RWY10_FWD = { ...RUNWAY_DIR };                                  // RWY10 落地滾行方向（+along）
+const RWY28_FWD = { x: -RUNWAY_DIR.x, z: -RUNWAY_DIR.z };             // RWY28 落地滾行方向（−along）
+/** @param {string} id */ const wpos = (id) => nodeWorld(/** @type {any} */ (makeTaxiwayGraph().nodes.get(id)), RUNWAY_DIR);
 
 describe('松山滑行道網路', () => {
   it('graph 全連通（每個節點都互達）', () => {
@@ -65,6 +69,46 @@ describe('松山滑行道網路', () => {
     expect(Math.sign(w10.x)).toBe(Math.sign(-RUNWAY_DIR.x));
     const path = shortestPath(g, 'r10', 'g3');
     expect(routeWorldPoints(g, path, RUNWAY_DIR)).toHaveLength(path.length);
+  });
+
+  // —— v4.0-2 P1 落地→脫離 ——
+  it('selectArrivalExit：RWY10 落地（+along 滾行）→ 選前方最近脫離道 x1（不回頭）', () => {
+    const g = makeTaxiwayGraph();
+    expect(selectArrivalExit(g, wpos('r10'), RWY10_FWD, RUNWAY_DIR)).toBe('x1');
+  });
+
+  it('selectArrivalExit：RWY28 落地（−along 滾行）→ 選前方最近脫離道 x3', () => {
+    const g = makeTaxiwayGraph();
+    expect(selectArrivalExit(g, wpos('r28'), RWY28_FWD, RUNWAY_DIR)).toBe('x3');
+  });
+
+  it('selectArrivalExit：滾過中段才落地 → 只選「前方」脫離道（方向相依，不回頭）', () => {
+    const g = makeTaxiwayGraph();
+    const atX2 = wpos('x2'); // along 0
+    expect(selectArrivalExit(g, atX2, RWY10_FWD, RUNWAY_DIR)).toBe('x3'); // +along 前方＝x3
+    expect(selectArrivalExit(g, atX2, RWY28_FWD, RUNWAY_DIR)).toBe('x1'); // −along 前方＝x1
+  });
+
+  it('selectArrivalExit：前方已無脫離道 → 退回最近脫離道（防呆）', () => {
+    const g = makeTaxiwayGraph();
+    expect(selectArrivalExit(g, wpos('r28'), RWY10_FWD, RUNWAY_DIR)).toBe('x3'); // +along 過了 x3、前方無 → 最近 x3
+  });
+
+  it('exitParallel：脫離道接到相鄰平行滑行道（轉出跑道）', () => {
+    const g = makeTaxiwayGraph();
+    expect(exitParallel(g, 'x1')).toBe('pB');
+    expect(exitParallel(g, 'x2')).toBe('pC');
+    expect(exitParallel(g, 'x3')).toBe('pD');
+  });
+
+  it('runwayCoord：nodeWorld 的逆（含 lateral）', () => {
+    const g = makeTaxiwayGraph();
+    for (const id of ['x3', 'g1', 'pC']) {
+      const n = /** @type {any} */ (g.nodes.get(id));
+      const c = runwayCoord(nodeWorld(n, RUNWAY_DIR), RUNWAY_DIR);
+      expect(c.along).toBeCloseTo(n.along, 6);
+      expect(c.lateral).toBeCloseTo(n.lateral, 6);
+    }
   });
 
   it('防呆：未知節點 → 空路徑、相同起終點 → 單點', () => {

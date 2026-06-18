@@ -20,7 +20,7 @@ import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
 import { GroundNav } from './scene/ground-nav.js';
-import { makeTaxiwayGraph, gates, nearestNode, arrivalRoute, routeWorldPoints, nodeWorld } from './scene/taxiway.js';
+import { makeTaxiwayGraph, gates, nearestNode, arrivalRoute, routeWorldPoints, nodeWorld, selectArrivalExit, exitParallel } from './scene/taxiway.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -104,6 +104,11 @@ const dodges = states.map(() => makeDodge());  // 翻滾閃避狀態機（per sl
 const taxi = makeTaxiwayGraph();
 const groundNav = new GroundNav(scene);
 let gnGate = /** @type {string|null} */ (null); // 目前導航目標登機門（活化時定一次）
+// v4.0-2 到場流程狀態機：'none'＝非到場（沿用 v4.0-1 直接導到 gate）；
+//   'exit'＝落地後脫離跑道（P1）；'taxi'＝脫離後滑到 gate（P2）；'parked'＝停妥（P3）。
+let arrivalPhase = /** @type {'none'|'exit'|'taxi'|'parked'} */ ('none');
+let arrivalExit = /** @type {string|null} */ (null); // 落地選定的脫離道節點 id（P1）
+const ARRIVAL_REACH_M = 70; // m 視為「抵達脫離道接點」的容差（轉 taxi 階段）
 // P4 地面碰撞「越界」：偏離綠線太遠（taxi 速度域）→ 真實接 damagePct、安全/溫和提示重來。
 const TAXI_OFF_M = 55;     // m 偏離綠線判越界（HITL 可調）
 const TAXI_OFF_PCT = 10;   // 越界受損%（真實模式）
@@ -850,9 +855,27 @@ function updateGroundNav(now) {
       if (wasDriven[i] && states[i].mode !== 'flying' && Math.hypot(states[i].pos.x, states[i].pos.z) < 3500) { slot = i; break; }
     }
   }
-  if (slot < 0) { if (groundNav.active) groundNav.clear(); gnGate = null; setAtc(''); return; }
+  if (slot < 0) { // 離地/換非民航機：收導航 + 重置到場流程
+    if (groundNav.active) groundNav.clear();
+    gnGate = null; arrivalPhase = 'none'; arrivalExit = null; setAtc('');
+    return;
+  }
   const p = states[slot].pos;
-  if (!groundNav.active || gnGate == null) { // 活化/換場才重算路線（避免每幀跳動）
+
+  // v4.0-2 P1：到場「脫離跑道」階段——綠線帶到前方脫離道、轉出跑道；抵達後轉「滑到 gate」。
+  if (arrivalPhase === 'exit' && arrivalExit) {
+    const exitNode = taxi.nodes.get(arrivalExit);
+    const exitW = exitNode ? nodeWorld(/** @type {any} */ (exitNode), RUNWAY_DIR) : null;
+    if (exitW && Math.hypot(exitW.x - p.x, exitW.z - p.z) < ARRIVAL_REACH_M) {
+      arrivalPhase = 'taxi'; gnGate = null; // 已轉出跑道 → 進滑行到 gate（P2 細化）
+    } else if (exitW && (!groundNav.active || gnGate !== arrivalExit)) {
+      gnGate = arrivalExit; // 借 gnGate 記「目前導航目標＝脫離道」，避免每幀重算
+      const par = exitParallel(taxi, arrivalExit);
+      const parW = par ? nodeWorld(/** @type {any} */ (taxi.nodes.get(par)), RUNWAY_DIR) : null;
+      const route = [{ x: p.x, z: p.z }, exitW, ...(parW ? [parW] : [])]; // 機身→脫離道→平行道（轉出跑道）
+      groundNav.setRoute(route, `🗼 松山塔台：${exitNode?.label ?? '脫離道'} 脫離跑道，跟著綠燈轉出。`);
+    }
+  } else if (!groundNav.active || gnGate == null) { // 滑到 gate（v4.0-1 既有；'taxi' 階段轉入時 gnGate=null → 重算一次）
     gnGate = nearestGate(p);
     const start = nearestNode(taxi, p, RUNWAY_DIR); // 從最近節點（含跑道門檻）起
     const path = start && gnGate ? arrivalRoute(taxi, start, gnGate) : [];
@@ -918,6 +941,13 @@ function loop(/** @type {number} */ now) {
       if (states[i].justTookOff) toast(i, '起飛！✈️');
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
+        // v4.0-2 P1 到場流程啟動：民航機落地 → 進「脫離跑道」階段，依滾行方向選前方脫離道。
+        if (planeId === 'atr72') {
+          const fwd = { x: Math.sin(states[i].heading), z: -Math.cos(states[i].heading) };
+          arrivalExit = selectArrivalExit(taxi, states[i].pos, fwd, RUNWAY_DIR);
+          arrivalPhase = arrivalExit ? 'exit' : 'taxi';
+          gnGate = null; // 強制重算導航路線（脫離道優先）
+        }
         if (playMode === 'mission') handleRunnerEvent(i, runner.notify(i, 'landed_runway', { x: states[i].pos.x, z: states[i].pos.z }));
         // v3.0-2 側風劣質著陸：偏離跑道中線/接地過快 → 受損%（真實模式 + 有風才咬）
         if (conseq[i].mode === 'real' && weatherForces(weather.type).windSpeed > 0) {
@@ -1060,6 +1090,7 @@ requestAnimationFrame(loop);
   groundNav, // v4.0-1 P3 e2e/dev：地面導航（active/route/ATC）
   taxiway: taxi, // v4.0-1 e2e/dev：滑行道 graph
   get lastTaxiOff() { return lastTaxiOff; }, // v4.0-1 P4 e2e/dev：最近一次越界事件
+  get arrival() { return { phase: arrivalPhase, exit: arrivalExit }; }, // v4.0-2 P1 e2e/dev：到場流程階段
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
   flightParams: (/** @type {string} */ id) => flightParams(id ?? planeId),
