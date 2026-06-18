@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   makeTaxiwayGraph, shortestPath, pathLength, gates, nodesOfKind,
   nearestExit, arrivalRoute, departureRoute, routeWorldPoints, nodeWorld, isConnected,
-  selectArrivalExit, exitParallel, runwayCoord,
+  selectArrivalExit, exitParallel, runwayCoord, assignArrivalGate,
 } from '../src/display/scene/taxiway.js';
 
 // 跑道方向（heading 100°，與 airport.js RUNWAY_DIR 同制）
@@ -108,6 +108,25 @@ describe('松山滑行道網路', () => {
       const c = runwayCoord(nodeWorld(n, RUNWAY_DIR), RUNWAY_DIR);
       expect(c.along).toBeCloseTo(n.along, 6);
       expect(c.lateral).toBeCloseTo(n.lateral, 6);
+    }
+  });
+
+  // —— v4.0-2 P2 塔台指派 gate ——
+  it('assignArrivalGate：依到場序輪派 6 門、繞回、負序也安全', () => {
+    const g = makeTaxiwayGraph();
+    const gs = gates(g); // [g1..g6]，NODE_DEFS 順序
+    expect(assignArrivalGate(g, 0)).toBe(gs[0]);
+    expect(assignArrivalGate(g, 5)).toBe(gs[5]);
+    expect(assignArrivalGate(g, 6)).toBe(gs[0]); // 繞回
+    expect(assignArrivalGate(g, 7)).toBe(gs[1]);
+    expect(assignArrivalGate(g, -1)).toBe(gs[5]); // 負序 wrap 不爆
+  });
+
+  it('assignArrivalGate：指派門可從脫離道到達（到場可達性）', () => {
+    const g = makeTaxiwayGraph();
+    for (let seq = 0; seq < 6; seq++) {
+      const gate = /** @type {string} */ (assignArrivalGate(g, seq));
+      expect(arrivalRoute(g, 'x2', gate).at(-1)).toBe(gate); // 中段脫離道 → 指派門
     }
   });
 

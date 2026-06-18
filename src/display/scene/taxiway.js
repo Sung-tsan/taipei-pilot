@@ -239,6 +239,19 @@ export function selectArrivalExit(graph, worldPos, headingVec, runwayDir) {
   return best;
 }
 
+/**
+ * 塔台指派登機門（v4.0-2 P2）：依到場序輪派（round-robin），每次到場停不同門
+ * （變化＝replay 樂趣；deterministic＝可測）。gates 順序＝NODE_DEFS（g1…g6）。
+ * @param {TaxiGraph} graph @param {number} seq 到場序（0-based；負值也安全 wrap）
+ * @returns {string|null} 指派門 id（無門 → null）
+ */
+export function assignArrivalGate(graph, seq) {
+  const gs = gates(graph);
+  if (!gs.length) return null;
+  const n = gs.length;
+  return gs[((Math.trunc(seq) % n) + n) % n];
+}
+
 /** 脫離道相鄰的平行滑行道節點 id（綠線轉出跑道用）。 @param {TaxiGraph} graph @param {string} exitId */
 export function exitParallel(graph, exitId) {
   for (const v of graph.adj.get(exitId) ?? []) {
