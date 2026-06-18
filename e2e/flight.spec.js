@@ -235,6 +235,76 @@ test('地面碰撞越界：ATR 偏離綠線 → 觸發越界事件', async ({ br
   await ctx.close();
 });
 
+// v4.0-2 P4：到場全鏈整合——落地 → 脫離跑道 → 滑到塔台「指派」門 → 停妥靠橋（以 dev hook + teleport 驗階段機）。
+test('到場全鏈：落地→脫離→指派門→停妥靠橋', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 選 ATR-72 + 啟動鍵盤駕駛；按兩次 G（gearUp 切回 false＝放輪，才能落地）
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="atr72"]');
+  await display.click('#modeMenuClose');
+  await display.keyboard.press('KeyG'); // 啟動鍵盤駕駛（kb.active）+ gearUp→true
+  await display.keyboard.press('KeyG'); // gearUp→false（放輪，才能落地）
+  // 啟動會把飛機重置到 spawn（reset-on-activate）→ 等該幀跑完再注入空中狀態，避免被清掉。
+  await display.waitForTimeout(500);
+
+  // 強制一次跑道落地：把飛機放在跑道中心正上方、對正、淺下滑、放輪 → 物理引擎接地 → 到場流程啟動。
+  await display.evaluate(() => {
+    const s = /** @type {any} */ (window).__tp.states[0];
+    const h = (100 * Math.PI) / 180; // RWY 10 heading
+    s.mode = 'flying'; s.pos = { x: 0, y: 1.6, z: 0 }; s.heading = h;
+    s.pitch = -0.05; s.bank = 0; s.speed = 30; s.gearDown = true;
+  });
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.arrival.phase),
+    { timeout: 15000 },
+  ).toBe('exit'); // 落地 → 進「脫離跑道」階段、塔台已指派門
+
+  // 讀指派門（輪派）→ 應為合法登機門
+  const gate = await display.evaluate(() => /** @type {any} */ (window).__tp.arrival.gate);
+  expect(gate).toMatch(/^g[1-6]$/);
+
+  // teleport 到選定脫離道接點 → exit 階段抵達 → 轉 taxi（滑到指派門）
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp;
+    const h = (100 * Math.PI) / 180; const dir = { x: Math.sin(h), z: -Math.cos(h) };
+    const n = tp.taxiway.nodes.get(tp.arrival.exit);
+    const nx = -dir.z, nz = dir.x;
+    const s = tp.states[0];
+    s.pos.x = dir.x * n.along + nx * n.lateral; s.pos.z = dir.z * n.along + nz * n.lateral; s.speed = 5;
+  });
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.arrival.phase),
+    { timeout: 15000 },
+  ).toBe('taxi');
+
+  // teleport 到指派門停妥姿態（位置 + nose-in 朝向 + 速度 0）→ 停妥 → 空橋伸出
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp;
+    const h = (100 * Math.PI) / 180; const dir = { x: Math.sin(h), z: -Math.cos(h) };
+    const n = tp.taxiway.nodes.get(tp.arrival.gate);
+    const nx = -dir.z, nz = dir.x;
+    const s = tp.states[0];
+    s.pos.x = dir.x * n.along + nx * n.lateral; s.pos.z = dir.z * n.along + nz * n.lateral;
+    s.heading = Math.atan2(dir.z, dir.x); s.speed = 0; s.mode = 'rolling';
+  });
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.arrival.phase),
+    { timeout: 15000 },
+  ).toBe('parked');
+  // 空橋伸出完成（~1.2s 延伸）
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.docked),
+    { timeout: 8000 },
+  ).toBe(true);
+  // 停妥 ATC「已靠橋」
+  await expect(display.locator('#atcBanner')).toContainText('已靠橋');
+  await ctx.close();
+});
+
 // v2.0-2：空戰整合——選空戰→氣球靶場 spawn→起飛→按 F 發射→彈藥扣減→HUD 顯示武器/彈藥。
 test('空戰：選空戰 → 氣球靶場 spawn → 起飛開火 → 彈藥扣減、HUD 顯示武器', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
