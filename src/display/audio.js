@@ -128,6 +128,13 @@ export class GameAudio {
     osc.stop(ctx.currentTime + 0.35);
   }
 
+  /** 失速警告（街機式「失速喇叭」：兩聲短促 warble，提醒壓低機頭/補油門）。 */
+  stallWarn() {
+    if (!this._on()) return;
+    this._tone('square', 860, 640, 0.12, 0.16, 0);
+    this._tone('square', 860, 640, 0.12, 0.16, 0.16);
+  }
+
   _on() { return this.ctx && this.enabled; }
 
   /**

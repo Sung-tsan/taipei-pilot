@@ -47,20 +47,23 @@ describe('起飛', () => {
 });
 
 describe('街機保護', () => {
-  it('空中速度永遠在 [V_GLIDE, V_MAX]，油門 0 也不失速', () => {
+  it('收油門放手 → 機頭自然下垂滑翔、不失速（v4 能量模型：放手＝穩定滑翔）', () => {
     const s = airborne();
+    let stalled = false;
     fly(s, { th: 0 }, 20, (st) => {
-      expect(st.speed).toBeGreaterThanOrEqual(P.V_GLIDE - 1e-9);
+      stalled ||= st.stalling;
       expect(st.speed).toBeLessThanOrEqual(P.V_MAX + 1e-9);
     });
-    expect(s.speed).toBeCloseTo(P.V_GLIDE, 5);
+    expect(stalled).toBe(false); // 放手＝機頭下垂滑翔，用俯衝找回速度 → 不失速
+    expect(s.speed).toBeGreaterThan(P.V_GLIDE - P.STALL_GAP); // 穩在失速門檻之上
   });
 
-  it('收油門 → 速度持續下降到滑翔速度，不會卡在巡航下限 V_MIN', () => {
+  it('收油門 → 速度一路下降到滑翔帶，不會卡在巡航下限 V_MIN', () => {
     const s = airborne({ speed: P.V_MAX });
     fly(s, { th: 0 }, 20);
     expect(s.speed).toBeLessThan(P.V_MIN); // 101 km/h 卡點不復存在
-    expect(s.speed).toBeCloseTo(P.V_GLIDE, 5);
+    expect(s.stalling).toBe(false);        // 放手滑翔（機頭下垂）不失速
+    expect(s.speed).toBeGreaterThan(P.V_GLIDE - P.STALL_GAP);
   });
 
   it('收油門放手 → 自然下滑（高度漸降），不會原地平飛', () => {
@@ -127,6 +130,60 @@ describe('街機保護', () => {
   });
 });
 
+describe('重力與失速（v4：能量模型）', () => {
+  it('同油門：俯衝速度明顯快於爬升速度（重力沿機軸耦合）', () => {
+    const climb = airborne({ y: 500, speed: 45 });
+    const dive = airborne({ y: 700, speed: 45 });
+    for (let t = 0; t < 8; t += DT) {
+      stepPlane(climb, { r: 0, p: 1, th: 0.6 }, DT, env);
+      stepPlane(dive, { r: 0, p: -1, th: 0.6 }, DT, env);
+    }
+    expect(climb.pitch).toBeGreaterThan(0.1);  // 確實在爬
+    expect(dive.pitch).toBeLessThan(-0.1);     // 確實在俯衝
+    expect(dive.speed).toBeGreaterThan(climb.speed + 5); // 俯衝明顯較快
+  });
+
+  it('收油門到零 + 拉桿維持高度（不讓機頭下垂）→ 持續降速直到失速', () => {
+    const s = airborne({ y: 500, speed: 40 });
+    let stalled = false;
+    for (let t = 0; t < 20 && !stalled; t += DT) {
+      stepPlane(s, { r: 0, p: 1, th: 0 }, DT, env); // 油門 0、硬拉桿頂住高度
+      stalled ||= s.stalling;
+    }
+    expect(stalled).toBe(true);       // 速度一路掉 → 失速
+    expect(s.justStall).toBe(true);   // 進入失速當幀有上升緣（供 HUD/音效預警）
+  });
+
+  it('高空失速 → 機頭被重力帶下垂俯衝、找回速度 → 自行恢復（不墜）', () => {
+    const s = airborne({ y: 600, speed: 17 }); // 起始就在失速速度
+    s.stalling = true;
+    let recovered = false;
+    fly(s, { r: 0, p: 0, th: 0.5 }, 10, (st) => { if (!st.stalling) recovered = true; });
+    expect(recovered).toBe(true);          // 高空有空間俯衝找回速度 → 解除失速
+    expect(s.mode).toBe('flying');         // 沒墜地
+    expect(s.pos.y).toBeGreaterThan(50);
+  });
+
+  it('低空：收油門拉桿會失速，補油門則不失速（油門＝救命稻草，孩子可學）', () => {
+    const cut = airborne({ x: 0, z: -6000, y: 80, speed: 35 }); // 機場區外低空
+    const pwr = airborne({ x: 0, z: -6000, y: 80, speed: 35 });
+    let cutStall = false, pwrStall = false;
+    for (let t = 0; t < 8; t += DT) {
+      stepPlane(cut, { r: 0, p: 1, th: 0 }, DT, env); cutStall ||= cut.stalling;
+      stepPlane(pwr, { r: 0, p: 1, th: 1 }, DT, env); pwrStall ||= pwr.stalling;
+    }
+    expect(cutStall).toBe(true);   // 收油門 → 速度撐不住 → 失速
+    expect(pwrStall).toBe(false);  // 滿油門 → 速度撐住 → 不失速
+  });
+
+  it('地面（rolling）清除空中失速態：落地即不失速', () => {
+    const s = makePlane();
+    s.mode = 'rolling'; s.stalling = true; s.speed = 20;
+    stepPlane(s, { r: 0, p: 0, th: 0.5 }, DT, env); // rolling 分支 → 清失速
+    expect(s.stalling).toBe(false);
+  });
+});
+
 describe('降落', () => {
   it('對正跑道、輕下沉 → 接地轉 rolling → 滑行停住 → parked', () => {
     // 跑道區內、低高度、淺下滑
@@ -162,12 +219,14 @@ describe('降落', () => {
 describe('起落架', () => {
   it('放輪極速較低、收輪飛更快', () => {
     const s = airborne();
-    fly(s, { th: 1, gearUp: false }, 20);
+    fly(s, { th: 1, gearUp: false }, 25);
     expect(s.gearDown).toBe(true);
-    expect(s.speed).toBeCloseTo(P.V_MAX_GEAR, 1);
-    fly(s, { th: 1, gearUp: true }, 20);
+    expect(s.speed).toBeCloseTo(P.V_MAX_GEAR, 0); // 放輪平衡在 V_MAX_GEAR（能量模型漸近，±0.5）
+    const gearSpeed = s.speed;
+    fly(s, { th: 1, gearUp: true }, 25);
     expect(s.gearDown).toBe(false);
-    expect(s.speed).toBeCloseTo(P.V_MAX, 1);
+    expect(s.speed).toBeGreaterThan(gearSpeed);   // 收輪更快
+    expect(s.speed).toBeGreaterThan(P.V_MAX - 1); // 逼近 V_MAX（漸近）
   });
 
   it('地面上不可收輪（rolling/parked 強制放下）', () => {
@@ -300,12 +359,12 @@ describe('複雜版操控（rudder / flaps / trim，v1.1-0 P4 加法接線）', 
     expect(dn.pos.y).toBeLessThan(lvl.pos.y - 20);
   });
 
-  it('襟翼 → 降低可飛下限（更慢仍不失速）', () => {
+  it('襟翼 → 可飛更慢（滑翔速更低），仍不失速', () => {
     const clean = airborne({ speed: 45 }); flyEx(clean, { r: 0, p: 0, th: 0 }, 20);
     const flapped = airborne({ speed: 45 }); flyEx(flapped, { r: 0, p: 0, th: 0, flaps: 2 }, 20);
-    expect(clean.speed).toBeCloseTo(P.V_GLIDE, 1);
-    expect(flapped.speed).toBeCloseTo(P.V_GLIDE - 2 * P.FLAPS_GLIDE, 1);
-    expect(flapped.speed).toBeLessThan(clean.speed); // 襟翼可飛更慢，利進場
+    expect(flapped.speed).toBeLessThan(clean.speed); // 襟翼放滑翔更慢，利進場
+    expect(clean.stalling).toBe(false);
+    expect(flapped.stalling).toBe(false);            // 襟翼降低失速門檻 → 更慢仍不失速
   });
 
   it('襟翼 → 阻力大、極速降低', () => {

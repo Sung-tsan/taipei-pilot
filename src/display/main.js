@@ -109,6 +109,7 @@ const TAXI_OFF_M = 55;     // m 偏離綠線判越界（HITL 可調）
 const TAXI_OFF_PCT = 10;   // 越界受損%（真實模式）
 const taxiOffCd = states.map(() => 0); // 越界事件冷卻（per slot，避免每幀累加）
 let lastTaxiOff = /** @type {{slot:number, off:number, at:number}|null} */ (null); // e2e/dev
+const stallWarnCd = states.map(() => 0); // v4 失速警告冷卻（per slot，避免相位震盪時連發）
 const pvpInvuln = states.map(() => 0);  // 被擊落後的無敵/暫退到期時間（per slot；PvP + 敵機共用）
 const pvpSmoke = states.map(() => false); // 冒煙中（無敵期過了要清）
 const prevLock = states.map(() => /** @type {string|null} */ (null)); // 鎖定上升緣（剛鎖到才響提示音）
@@ -908,6 +909,11 @@ function loop(/** @type {number} */ now) {
         } else {
           handleMishap(i); // 後果軸三檔分支（safe 彈開 / gentle ❤️−1 / real 漸進 damage）
         }
+      }
+      if (states[i].justStall && now > stallWarnCd[i]) { // v4 失速：警告 + 失速喇叭（壓低機頭/補油門找回速度）
+        stallWarnCd[i] = now + 2500;
+        toast(i, '⚠️ 失速！壓低機頭、補油門');
+        audio.stallWarn();
       }
       if (states[i].justTookOff) toast(i, '起飛！✈️');
       if (states[i].justLanded) {

@@ -14,7 +14,10 @@ export const P = {
   V_MAX: 65,            // m/s 最高空速（收起落架）
   V_MAX_GEAR: 52,       // m/s 放起落架的極速（教孩子「收輪飛比較快」）
   V_ROTATE: 33,         // m/s 滾行到這個速度自動離地
-  ACCEL: 8,             // m/s² 空中加減速
+  ACCEL: 8,             // m/s² 空中推力（v4：能量模型的引擎推力，滿油門平飛平衡在 vMax）
+  GRAVITY: 9.8,         // m/s² 重力沿機軸分量（v4：爬升減速、俯衝加速 → 俯衝快於爬升）
+  STALL_GAP: 5,         // m/s 失速門檻＝vGlide − 此值（低於即失速；隨機型/襟翼浮動）
+  STALL_PITCH: -0.3,    // rad 失速時機頭被重力帶下垂的目標（街機：俯衝找回速度即恢復）
   GROUND_ACCEL: 10,     // m/s² 地面加速
   GROUND_DRAG: 6,       // m/s² 地面無油門減速
   GROUND_TOP: 42,       // m/s 地面滾行極速（> V_ROTATE 才起得來）
@@ -58,6 +61,7 @@ export const P = {
  *   speed: number, mode: PlaneMode, autopilot: null|'orbit', gearDown: boolean,
  *   justTookOff: boolean, justLanded: boolean, justBounced: boolean, justNoGear: boolean,
  *   justForcedTouch: boolean, lastSink: number,
+ *   stalling: boolean, justStall: boolean,
  * }} PlaneState
  * @typedef {{
  *   groundY: (x:number, z:number) => number,
@@ -77,6 +81,7 @@ export function makePlane({ x = 0, z = 0, heading = 0 } = {}) {
     mode: 'parked', autopilot: null, gearDown: true,
     justTookOff: false, justLanded: false, justBounced: false, justNoGear: false,
     justForcedTouch: false, lastSink: 0,
+    stalling: false, justStall: false,
   };
 }
 
@@ -105,18 +110,21 @@ export function stepPlane(s, rawInput, dt, env, params = P) {
   s.justBounced = false;
   s.justNoGear = false;
   s.justForcedTouch = false;
+  s.justStall = false;
   const input = s.autopilot === 'orbit'
     ? { r: 0, p: 0, th: params.ORBIT_TH, gearUp: !s.gearDown } // bank 直接鎖定，gear 維持原狀
     : rawInput;
 
   if (s.mode === 'parked') {
     s.gearDown = true; // 地面上不可收輪
+    s.stalling = false; // 地面不失速
     if (input.th > 0.05) s.mode = 'rolling';
     return;
   }
 
   if (s.mode === 'rolling') {
     s.gearDown = true;
+    s.stalling = false; // 地面不失速（落地/滑行清除空中失速態）
     stepRolling(s, input, dt, env, params);
     return;
   }
@@ -157,15 +165,24 @@ function stepRolling(s, input, dt, env, params) {
  * @param {PlaneState} s @param {Input} input @param {number} dt @param {Env} env @param {typeof P} params
  */
 function stepFlying(s, input, dt, env, params) {
-  // 1. 速度：區間鎖定，永不失速；放起落架 = 阻力大，極速較低。
-  // 收油門 → 一路減速到 vGlide（不再卡在巡航下限），但永遠不會更慢 → 不失速。
-  // 襟翼（複雜版）：每段降低可飛下限 + 降低極速（升力/阻力）；flaps=0 → 與 v1 完全一致。
+  // 1. 速度＝能量模型（v4：取代「速度區間鎖定·永不失速」）：
+  //      dv = 推力(隨油門) − 阻力(隨速度²) − 重力(沿機軸 sin(pitch))。
+  //    校準：cd = ACCEL/vMax² → 滿油門平飛平衡剛好在 vMax（放輪/襟翼 vMax 較低＝極速較低，沿用舊值）。
+  //    怠速無推力 → 阻力一路洩速 → 失速；重力讓「俯衝比爬升快」、低空收油門 → 持續降速直到失速。
+  //    襟翼（複雜版）：降低失速門檻參考 vGlide + 降低極速 vMax；flaps=0 → 與舊參數一致。
   const flaps = clamp(input.flaps ?? 0, 0, MAX_FLAPS);
-  const vGlide = params.V_GLIDE - flaps * params.FLAPS_GLIDE;
+  const vGlide = params.V_GLIDE - flaps * params.FLAPS_GLIDE;          // 失速門檻參考
   const vMax = (s.gearDown ? params.V_MAX_GEAR : params.V_MAX) - flaps * params.FLAPS_DRAG;
-  const vTarget = lerp(vGlide, vMax, clamp(input.th, 0, 1));
-  s.speed = approach(s.speed, vTarget, params.ACCEL, dt);
-  s.speed = clamp(s.speed, vGlide, params.V_MAX);
+  const cd = params.ACCEL / (vMax * vMax);                            // 阻力係數（平衡在 vMax）
+  const dv = clamp(input.th, 0, 1) * params.ACCEL                     // 推力
+           - cd * s.speed * s.speed                                   // 阻力
+           - params.GRAVITY * Math.sin(s.pitch);                      // 重力：爬升−、俯衝＋
+  s.speed = clamp(s.speed + dv * dt, 0, params.V_MAX);
+
+  // 失速狀態（遲滯）：速度低於 vStall → 失速（justStall 上升緣供 HUD/音效預警）；回到 vGlide 以上解除。
+  const vStall = Math.max(vGlide - params.STALL_GAP, 4);
+  if (!s.stalling && s.speed < vStall) { s.stalling = true; s.justStall = true; }
+  else if (s.stalling && s.speed > vGlide) { s.stalling = false; }
 
   // 2. 滾轉：死區內 = 放手自動回平
   let bankTarget = clamp(input.r, -1, 1) * params.MAX_BANK;
@@ -216,6 +233,10 @@ function stepFlying(s, input, dt, env, params) {
 
   // 亂流（v3.0-2）：把姿態目標疊上有界擾動（gust 由 main 從 weather×時間噪音算；缺＝0＝v1）。
   if (input.gust) { bankTarget += input.gust.roll; pitchTarget += input.gust.pitch; }
+
+  // 失速（v4）：升力不足 → 機頭被重力帶下垂（街機式強制下壓，蓋過保護/拉桿）；
+  // 機頭下沉 → 俯衝找回速度 → 解除（高空自救；低空＝撞地柔彈/迫降，正是「低空失速」後果）。
+  if (s.stalling) pitchTarget = Math.min(pitchTarget, params.STALL_PITCH);
 
   s.bank = approach(s.bank, bankTarget, params.BANK_RATE, dt);
   s.pitch = approach(s.pitch, pitchTarget, params.PITCH_RATE, dt);
