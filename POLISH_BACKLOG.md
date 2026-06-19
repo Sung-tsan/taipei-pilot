@@ -32,9 +32,14 @@ Append 格式（一行）：
 
 ### 1. 資產補完（CC0 取樣 SFX / art 缺口）
 - [ ] 擬真爆炸真·取樣 clip 待 CC0 drop — V2 音效 — 合成已逼近，待 CC0 音效資產
+- [ ] ATC 真語音 clip / 預生成 TTS — v4.1-2 — 目前＝文字 + 合成無線電 squelch；真語音留 V5（交付明訂）
 - [ ] ATR-72 換純 CC0 客機 GLB（目前 **CC-BY 3.0** 通用噴射客機代用螺旋槳機）— v4.0-1 — 線上查無 CC0 客機（見 public/models/CREDITS.md）；丟 CC0 GLB 進 `public/models/airliner.glb` 即一行替換
 
 ### 2. 明示取捨回收（逐項決定：補完 or 接受為最終）
+- [ ] 起飛排序可見的「前面那架」環境離場機 — v4.1-1 — 排序為計時 hold-short + ATC（功能完整）；可見機需 transient 環境機 entity + scripted 起飛（排隊感目前靠 ATC）
+- [ ] 登機走動 voxel 乘客小人 — v4.1-1 — 乘客目前＝ATC 計數器 N/72（加油/行李車是實體）
+- [ ] 專屬地勤車模型（拖車/油罐/行李車）— v4.1-1 — 暫重用 Kenney follow-me sedan 造型
+- [ ] 4 機型候選（A330/ATR/F16/T34 clean-belly GLB）換入 plane-specs — v4 — 已 sourcing `public/models/candidates/`，yaw/scale 待 HITL 校
 - [ ] 真實「出局」正式版（回合淘汰／觀戰）— v2.0-3/2.0-4 — 暫以長暫退重生呈現
 - [ ] 競速完賽收集簿 — v2.1-1 — 暫以慶祝呈現、未寫收集簿（輕度簡化）
 - [ ] 移動車流 / 遠方環境機 — v3.0-3 — bonus 未做（perf 預算，不擋版本）
@@ -63,6 +68,7 @@ Append 格式（一行）：
 
 ### 6. 教育內容總校（DRAFT 最終校稿）
 - [ ] 各版 facts / 任務 prompt / 天氣任務 / ATC bank 最終校稿總清（適齡 + 正確）
+- [ ] ATC phraseology DRAFT 校稿（`atc-phraseology.js` ATC_DRAFT=true + 空中走廊用語）— v4.1-2 — 擬真+6歲懂，讀給孩子校
 
 ### 7. 首次體驗 onboarding
 - [ ] 6 歲第一次開不被 5 版功能淹沒（模式選單 / 解鎖呈現 / 教學瞬間 holistic）
