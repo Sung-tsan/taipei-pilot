@@ -320,6 +320,50 @@ test('到場全鏈：落地→脫離→指派門→停妥靠橋', async ({ brows
   await ctx.close();
 });
 
+// v4.1 空中走廊：ATR 起飛 → 離場/進場 traffic pattern 穿越環啟用 + 航點推進。
+test('空中走廊：ATR 起飛 → 走廊啟用 + 航點推進', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="atr72"]');
+  await display.click('#modeMenuClose');
+  await display.keyboard.press('KeyG'); // spawn-at-gate（離場 boarding）
+  // teleport 到跑道頭直接起飛（略過地面離場流程；起飛 → 接空中走廊）
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp;
+    const h = (100 * Math.PI) / 180; const dir = { x: Math.sin(h), z: -Math.cos(h) };
+    const s = tp.states[0]; const back = -1100;
+    s.pos.x = dir.x * back; s.pos.z = dir.z * back; s.pos.y = 0; s.heading = h; s.mode = 'rolling'; s.speed = 0;
+  });
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+
+  // 起飛 → 空中走廊啟用（idx 0，leg=climb）
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.corridor.active),
+    { timeout: 10000 },
+  ).toBe(true);
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.corridor.leg)).toBe('climb');
+
+  // teleport 到目前目標航點 → 推進到下一航點（idx 增加）
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp; const t = tp.corridor.target;
+    const s = tp.states[0]; s.pos.x = t.x; s.pos.z = t.z; s.pos.y = t.alt;
+  });
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.corridor.idx),
+    { timeout: 10000 },
+  ).toBeGreaterThan(0);
+  await ctx.close();
+});
+
 // v2.0-2：空戰整合——選空戰→氣球靶場 spawn→起飛→按 F 發射→彈藥扣減→HUD 顯示武器/彈藥。
 test('空戰：選空戰 → 氣球靶場 spawn → 起飛開火 → 彈藥扣減、HUD 顯示武器', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });

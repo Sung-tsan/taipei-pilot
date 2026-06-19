@@ -11,6 +11,8 @@ import { makeDayNight, dayNightParams, TIMES_OF_DAY } from './weather/daynight.j
 import { crosswindDamagePct, turbulenceDamagePct } from './flight/wind-damage.js';
 import { AirportLife } from './scene/airport-life.js';
 import { spawnPose, RUNWAY_DIR } from './scene/airport.js';
+import { patternPoints, advanceCorridor, corridorAtc } from './scene/air-corridor.js';
+import { CorridorMarkers } from './scene/corridor-markers.js';
 import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
@@ -129,6 +131,13 @@ const PUSH_SEC = 3.2;       // pushback 推出時長
 const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
 const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY10，與 spawnPose 起飛朝向一致）
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
+// v4.1 空中走廊（airborne corridor）：起飛後接離場爬升→下風→進場下降的 traffic pattern（一趟完整航班空中段）。
+const corridorMarkers = new CorridorMarkers(scene);
+let corridorActive = false;
+let corridorSlot = -1;
+let corridorIdx = 0;
+/** @type {import('./scene/air-corridor.js').CorridorPoint[]} */
+let corridorPts = [];
 // P4 地面碰撞「越界」：偏離綠線太遠（taxi 速度域）→ 真實接 damagePct、安全/溫和提示重來。
 const TAXI_OFF_M = 55;     // m 偏離綠線判越界（HITL 可調）
 const TAXI_OFF_PCT = 10;   // 越界受損%（真實模式）
@@ -569,6 +578,7 @@ function respawnAtRunway(i) {
   Object.assign(states[i], makePlane(spawnPose(i)));
   planes[i].setDamaged(false);
   if (departSlot === i) clearDeparture(); // 離場中墜機 → 收離場狀態（避免在跑道跑 pushback/taxi 邏輯）
+  if (corridorSlot === i) clearCorridor();
   arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
 }
 /** 撞擊/失誤的後果軸分支 @param {number} i */
@@ -875,8 +885,34 @@ function startDeparture(slot) {
 /** 結束離場流程（起飛/換機/重生）。 */
 function clearDeparture() { departPhase = 'none'; departGate = null; departSlot = -1; pushPath = null; boardReady = false; }
 
-/** block B 佔位：起飛後接「空中離場 corridor」（下一 commit 實作）。 @param {number} slot */
-function startDepartCorridor(slot) { void slot; /* v4.1 airborne 離場 corridor：下一 commit */ }
+/** 起飛後啟動空中走廊（離場爬升→下風→進場下降，一趟完整航班空中段）。 @param {number} slot */
+function startDepartCorridor(slot) {
+  corridorActive = true; corridorSlot = slot; corridorIdx = 0;
+  corridorPts = patternPoints(RUNWAY_DIR);
+}
+
+/** 收空中走廊（落地/換機/重生）。 */
+function clearCorridor() { corridorActive = false; corridorSlot = -1; corridorIdx = 0; corridorMarkers.clear(); }
+
+/**
+ * 空中走廊每幀：airborne ATR → 推進航點、放穿越環、ATC 指引（離場/近場/進場）。
+ * 末點＝跑道頭，飛到低空 → 由 flight-model 接地 → justLanded 接到場地面鏈。
+ * @param {number} now
+ */
+function updateAirCorridor(now) {
+  if (!(corridorActive && planeId === 'atr72' && (playMode === 'free' || playMode === 'mission'))) {
+    if (corridorActive) clearCorridor();
+    return;
+  }
+  if (corridorSlot < 0 || !wasDriven[corridorSlot] || states[corridorSlot].mode !== 'flying') {
+    corridorMarkers.update(DT); return; // 地面（剛起飛前/落地後）：環不推進
+  }
+  const p = states[corridorSlot].pos;
+  corridorIdx = advanceCorridor(corridorPts, p, corridorIdx);
+  corridorMarkers.show(corridorPts, corridorIdx);
+  corridorMarkers.update(DT);
+  setAtc(corridorAtc(corridorPts[corridorIdx]));
+}
 
 /** 開始後推（pushback）：scripted 把飛機從 gate 推到 apron 接點、轉向 taxi 方向。 @param {number} slot */
 function startPushback(slot) {
@@ -1103,7 +1139,7 @@ function loop(/** @type {number} */ now) {
         toast(i, '降落成功！👏'); audio.landingChime();
         // v4.0-2 到場流程啟動：民航機落地 → 塔台指派 gate（P2）+ 進「脫離跑道」階段（P1）。
         if (planeId === 'atr72') {
-          clearDeparture(); // 落地＝到場：清離場狀態（避免殘留 boarding 擋住到場流程）
+          clearDeparture(); clearCorridor(); // 落地＝到場：清離場/空中走廊（避免殘留擋住到場流程）
           const fwd = { x: Math.sin(states[i].heading), z: -Math.cos(states[i].heading) };
           arrivalExit = selectArrivalExit(taxi, states[i].pos, fwd, RUNWAY_DIR);
           arrivalGate = assignArrivalGate(taxi, arrivalSeq++); // P2 塔台指派（輪派）
@@ -1211,6 +1247,7 @@ function loop(/** @type {number} */ now) {
   for (let i = 0; i < MAX_SLOTS; i++) updateReticle(i);
   renderMinimap();
   updateGroundNav(now); // V4 地面導航（ATR 在地面 → 跟我車/綠中線燈/ATC 文字）
+  updateAirCorridor(now); // V4.1 空中走廊（ATR 空中 → 離場/進場穿越環 + ATC）
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
@@ -1256,6 +1293,7 @@ requestAnimationFrame(loop);
   get lastTaxiOff() { return lastTaxiOff; }, // v4.0-1 P4 e2e/dev：最近一次越界事件
   get arrival() { return { phase: arrivalPhase, exit: arrivalExit, gate: arrivalGate, seq: arrivalSeq }; }, // v4.0-2 P1/P2 e2e/dev
   get departure() { return { phase: departPhase, gate: departGate, slot: departSlot, boardReady, pushT }; }, // v4.1-1 e2e/dev
+  get corridor() { const w = corridorPts[corridorIdx]; return { active: corridorActive, idx: corridorIdx, n: corridorPts.length, leg: w?.leg ?? null, target: w ? { x: w.x, z: w.z, alt: w.alt } : null }; }, // v4.1 空中走廊 e2e/dev
   confirmDeparture() { pendingConfirm = true; }, // v4.1-1 e2e/dev：模擬遙控器/Enter 確認
   setDogfightMode: (/** @type {string} */ m) => { dogfightMode = m; },
   setPlane: (/** @type {string} */ id) => setPlane(id),
