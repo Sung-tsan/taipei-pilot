@@ -38,6 +38,7 @@ export const BTN = {
   FIRE: 2,          // 空戰：發射（momentary 按住；display 端依武器冷卻節流）
   WEAPON_SWITCH: 4, // 空戰：換武器（momentary；display 端偵測上升緣循環切換）
   DODGE: 8,         // 空戰：翻滾閃避（momentary；display 端偵測上升緣觸發滾筒翻＋拔掉追蹤飛彈的鎖）
+  CONFIRM: 16,      // v4.1-1 離場：後推/許可「確認」（momentary；display 端 latch 成 pendingConfirm）
   // 喇叭已改為 remote 本地播聲（兩機同玩不互相干擾），不再走 b bitmask。
 };
 

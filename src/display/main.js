@@ -12,6 +12,7 @@ import { crosswindDamagePct, turbulenceDamagePct } from './flight/wind-damage.js
 import { AirportLife } from './scene/airport-life.js';
 import { spawnPose, RUNWAY_DIR } from './scene/airport.js';
 import { patternPoints, advanceCorridor, corridorAtc } from './scene/air-corridor.js';
+import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort, atcCleared, atcExit, atcTaxiToGate, atcDocked } from './scene/atc-phraseology.js';
 import { CorridorMarkers } from './scene/corridor-markers.js';
 import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
@@ -126,6 +127,7 @@ let pushPath = null;        // pushback 起終姿態（scripted 後推）
 let holdT = 0;             // hold-short 排序計時（秒）
 let boardReady = false;     // 登機完成、等玩家確認後推
 let pendingConfirm = false;  // 確認鍵脈衝閂鎖（Enter / 遙控器；physics loop 設、離場流程取走）
+let departKeysActive = false; // 是否已把遙控器切到「確認後推」子模式（避免重複廣播）
 const BOARD_SEC = 4;        // 登機動畫長（短可愛）
 const PUSH_SEC = 3.2;       // pushback 推出時長
 const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
@@ -548,7 +550,7 @@ function inputFor(slot) {
       r: live.r, p: live.p, th: live.th, gearUp: !!(live.b & BTN.GEAR_UP),
       rudder: live.rudder ?? 0, flaps: live.flaps ?? 0, trim: live.trim ?? 0, // 複雜版（缺＝中立）
       fire: !!(live.b & BTN.FIRE), weaponSwitch: !!(live.b & BTN.WEAPON_SWITCH), // 空戰鍵
-      dodge: !!(live.b & BTN.DODGE), // 翻滾閃避鍵
+      dodge: !!(live.b & BTN.DODGE), confirm: !!(live.b & BTN.CONFIRM), // 翻滾閃避鍵 / 離場確認鍵
     };
   }
   const lastInput = lastInputs[slot];
@@ -858,11 +860,14 @@ function renderMinimap() {
   minimap.render(/** @type {any} */ (blips));
 }
 
-/** @param {string} text ATC 文字框架（空＝隱藏） */
-function setAtc(text) {
+let lastAtc = ''; // ATC 文字變更偵測（無線電音效只在內容變時響，不每幀）
+/** @param {string} text ATC 文字框架（空＝隱藏） @param {boolean} [radio] 內容變更時播塔台無線電「咔」 */
+function setAtc(text, radio = false) {
   const el = $('atcBanner');
   el.textContent = text;
   el.classList.toggle('show', !!text);
+  if (radio && text && text !== lastAtc) audio.atcRadio(); // v4.1-2 無線電 squelch（對講機感）
+  lastAtc = text;
 }
 
 /** 該 slot 的出生姿態：ATR（民航）＝離場登機門（spawn-at-gate）；T-34C/F-16＝跑道頭（快起飛）。 @param {number} slot */
@@ -883,7 +888,10 @@ function startDeparture(slot) {
 }
 
 /** 結束離場流程（起飛/換機/重生）。 */
-function clearDeparture() { departPhase = 'none'; departGate = null; departSlot = -1; pushPath = null; boardReady = false; }
+function clearDeparture() {
+  departPhase = 'none'; departGate = null; departSlot = -1; pushPath = null; boardReady = false;
+  if (departKeysActive) { departKeysActive = false; net.sendMode(playMode); } // 還原遙控器 context 鍵
+}
 
 /** 起飛後啟動空中走廊（離場爬升→下風→進場下降，一趟完整航班空中段）。 @param {number} slot */
 function startDepartCorridor(slot) {
@@ -911,7 +919,7 @@ function updateAirCorridor(now) {
   corridorIdx = advanceCorridor(corridorPts, p, corridorIdx);
   corridorMarkers.show(corridorPts, corridorIdx);
   corridorMarkers.update(DT);
-  setAtc(corridorAtc(corridorPts[corridorIdx]));
+  setAtc(corridorAtc(corridorPts[corridorIdx]), true); // 航點變更時響無線電（每 leg）
 }
 
 /** 開始後推（pushback）：scripted 把飛機從 gate 推到 apron 接點、轉向 taxi 方向。 @param {number} slot */
@@ -929,6 +937,7 @@ function startPushback(slot) {
     h1 = Math.atan2(nW.x - aW.x, -(nW.z - aW.z)); // forward={sin h,-cos h} → 朝下一節點
   }
   pushPath = { from, to, h0: states[slot].heading, h1 };
+  if (departKeysActive) { departKeysActive = false; net.sendMode(playMode); } // 確認完成 → 遙控器還原
   toast(slot, '🚜 開始後推（pushback）！');
 }
 
@@ -989,7 +998,7 @@ function updateArrival(slot, now, p) {
       groundNav.dock({ x: gateW.x + termDir.x * BRIDGE_LEN, z: gateW.z + termDir.z * BRIDGE_LEN }, gateW);
       toast(slot, `🛬 停妥靠橋！歡迎抵達松山 ${gNode.label ?? ''}`);
       audio.landingChime();
-      setAtc(`🗼 ${gNode.label ?? '登機門'} 已靠橋，歡迎來到松山！`);
+      setAtc(atcDocked(gNode.label ?? '登機門'), true);
     }
   }
   if (arrivalPhase === 'parked') { groundNav.update(DT, p, now); return; } // 停妥：僅跑空橋動畫，ATC 維持「已靠橋」
@@ -1003,18 +1012,18 @@ function updateArrival(slot, now, p) {
       const par = exitParallel(taxi, arrivalExit);
       const parW = par ? nodeWorld(/** @type {any} */ (taxi.nodes.get(par)), RUNWAY_DIR) : null;
       const route = [{ x: p.x, z: p.z }, exitW, ...(parW ? [parW] : [])];
-      groundNav.setRoute(route, `🗼 松山塔台：${exitNode?.label ?? '脫離道'} 脫離跑道，前往 ${gateLabel} 靠橋。`);
+      groundNav.setRoute(route, atcExit(exitNode?.label ?? '脫離道', gateLabel));
     }
   } else if (arrivalPhase === 'taxi' && (!groundNav.active || gnGate == null)) { // P2：滑到「指派」門
     gnGate = arrivalGate;
     const start = nearestNode(taxi, p, RUNWAY_DIR);
     const path = start && gnGate ? arrivalRoute(taxi, start, gnGate) : [];
-    const lbl = gnGate ? `🗼 松山塔台：滑行至指派的 ${gateLabel}，跟著綠燈與引導車靠橋。` : '';
+    const lbl = gnGate ? atcTaxiToGate(gateLabel) : '';
     const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
     groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, lbl);
   }
   groundNav.update(DT, p, now);
-  setAtc(groundNav.atcText);
+  setAtc(groundNav.atcText, true);
 }
 
 /** 離場流程：登機→後推→taxi 到跑道頭→起飛排序→可起飛。 @param {number} slot @param {number} now @param {{x:number,z:number}} p */
@@ -1025,11 +1034,11 @@ function updateDeparture(slot, now, p) {
     if (groundNav.active) groundNav.clear();
     boardT += DT;
     if (boardT >= BOARD_SEC) {
-      boardReady = true;
-      setAtc(`🗼 ${gLabel} 登機完成。按【確認】開始後推。`);
+      if (!boardReady) { boardReady = true; departKeysActive = true; net.sendMode('depart'); } // 遙控器換「確認後推」鍵
+      setAtc(atcBoardComplete(gLabel), true);
       if (pendingConfirm || boardT >= BOARD_SEC + 8) { pendingConfirm = false; startPushback(slot); } // 確認或逾時自動
     } else {
-      setAtc(`🛫 ${gLabel} 登機中… 乘客 ${Math.floor((boardT / BOARD_SEC) * 72)}/72，加油・行李作業中。`);
+      setAtc(atcBoarding(gLabel, Math.floor((boardT / BOARD_SEC) * 72))); // 計數器：不響無線電（避免每幀咔）
     }
     return;
   }
@@ -1044,7 +1053,7 @@ function updateDeparture(slot, now, p) {
       states[slot].heading = wrapAngle(pushPath.h0 + dh * e);
       states[slot].speed = 0; states[slot].mode = 'rolling';
     }
-    setAtc(`🗼 ${gLabel} 後推中…（引導車把飛機推離登機門）`);
+    setAtc(atcPushback(gLabel), true);
     if (pushT >= 1) { departPhase = 'taxiOut'; gnGate = null; }
     return;
   }
@@ -1059,20 +1068,20 @@ function updateDeparture(slot, now, p) {
       const start = nearestNode(taxi, p, RUNWAY_DIR);
       const path = start ? departureRoute(taxi, start, DEPART_RWY) : [];
       const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
-      groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, `🗼 松山塔台：沿綠燈滑到 ${rwyLabel} 等待點，準備起飛。`);
+      groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, atcTaxiToHold(rwyLabel));
     }
     groundNav.update(DT, p, now);
-    setAtc(groundNav.atcText);
+    setAtc(groundNav.atcText, true);
     checkTaxiOff(slot, p, now); // 離場 taxi 也吃越界
     return;
   }
   if (departPhase === 'holdShort') {
     if (groundNav.active) groundNav.clear();
     holdT += DT;
-    if (holdT < SEQ_SEC) setAtc(`🗼 ${rwyLabel} 等待點 hold short：前面有一架在離場，稍等…`);
+    if (holdT < SEQ_SEC) setAtc(atcHoldShort(rwyLabel), true);
     else {
       departPhase = 'cleared'; gnGate = null;
-      setAtc(`🗼 小飛官，${rwyLabel} 可以起飛了，推滿油門！`);
+      setAtc(atcCleared(rwyLabel), true);
       toast(slot, '🛫 可以起飛了！推滿油門'); audio.landingChime();
     }
     return;
@@ -1082,10 +1091,10 @@ function updateDeparture(slot, now, p) {
       gnGate = 'TKOF';
       const r10W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r10')), RUNWAY_DIR);
       const r28W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r28')), RUNWAY_DIR);
-      groundNav.setRoute([{ x: p.x, z: p.z }, r10W, r28W], `🗼 ${rwyLabel} 可以起飛——進跑道、對正、推滿油門！`);
+      groundNav.setRoute([{ x: p.x, z: p.z }, r10W, r28W], atcCleared(rwyLabel));
     }
     groundNav.update(DT, p, now);
-    setAtc(groundNav.atcText); // 進跑道中不做越界（離開等待點上跑道）
+    setAtc(groundNav.atcText, true); // 進跑道中不做越界（離開等待點上跑道）
   }
 }
 

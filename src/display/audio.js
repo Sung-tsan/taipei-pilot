@@ -128,6 +128,14 @@ export class GameAudio {
     osc.stop(ctx.currentTime + 0.35);
   }
 
+  /** ATC 塔台無線電「咔」聲（收發 squelch）：短嘶聲（band-pass 感雜訊爆）+ 雙咔（對講機感）。 */
+  atcRadio() {
+    if (!this._on()) return;
+    this._noise(0.07, 0.045, 1900, 1300, 0);     // 短嘶聲（高頻雜訊爆＝無線電底噪）
+    this._tone('square', 620, 600, 0.025, 0.07, 0);     // 收咔
+    this._tone('square', 540, 520, 0.025, 0.05, 0.09);  // 發咔（尾）
+  }
+
   /** 失速警告（街機式「失速喇叭」：兩聲短促 warble，提醒壓低機頭/補油門）。 */
   stallWarn() {
     if (!this._on()) return;

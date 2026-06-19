@@ -211,7 +211,7 @@ test('離場地面流程：ATR spawn-at-gate → 登機→後推→taxi 導航 +
     { timeout: 30000 },
   ).toBe(true);
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._route.length)).toBeGreaterThan(1);
-  await expect(display.locator('#atcBanner')).toContainText('塔台');
+  await expect(display.locator('#atcBanner')).toContainText('松山'); // taxi 用語＝「松山地面…」
   await expect.poll(
     () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._carReady),
     { timeout: 30000 },

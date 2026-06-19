@@ -37,12 +37,19 @@ export const RACE_KEYS = /** @type {ContextKey[]} */ ([
   { id: 'land', label: '🛬 降落輔助', hint: '收油門＋放輪', action: 'landAssist' },
 ]);
 
+/** 離場「確認後推」替換鍵（v4.1-1）：display 在「登機完成、待確認」期間廣播 'depart' 子模式 → 換上此鍵。 */
+export const DEPART_KEYS = /** @type {ContextKey[]} */ ([
+  { id: 'confirm', label: '✅ 確認後推', hint: '登機完成，推出去！', btn: BTN.CONFIRM },
+  { id: 'horn', label: '🔊 喇叭', hint: '叭叭！', action: 'horn' },
+]);
+
 /** mode → context 鍵 config（remote 換玩法時查此表，v2.0-5 接線）。 */
 export const KEYS_BY_MODE = {
   free: FREE_FLIGHT_KEYS,
   mission: FREE_FLIGHT_KEYS,
   dogfight: DOGFIGHT_KEYS,
   race: RACE_KEYS,
+  depart: DEPART_KEYS, // v4.1-1 離場確認子模式
 };
 
 /** @param {string} mode @returns {ContextKey[]} 未知 mode → 退回自由飛鍵（不爆） */

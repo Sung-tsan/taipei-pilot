@@ -3,7 +3,7 @@
 // 只測純資料/查詢（mountContextKeys 需 DOM，由 e2e 覆蓋）。
 import { describe, it, expect } from 'vitest';
 import {
-  FREE_FLIGHT_KEYS, DOGFIGHT_KEYS, RACE_KEYS, KEYS_BY_MODE, keysForMode,
+  FREE_FLIGHT_KEYS, DOGFIGHT_KEYS, RACE_KEYS, DEPART_KEYS, KEYS_BY_MODE, keysForMode,
 } from '../src/remote/context-keys.js';
 import { BTN } from '../shared/protocol.js';
 
@@ -42,7 +42,13 @@ describe('context-keys 模式對照', () => {
     expect(dodge?.btn).toBe(BTN.DODGE);
   });
 
-  it('KEYS_BY_MODE 涵蓋四個玩法模式', () => {
-    expect(Object.keys(KEYS_BY_MODE).sort()).toEqual(['dogfight', 'free', 'mission', 'race']);
+  it('KEYS_BY_MODE 涵蓋四玩法 + 離場確認子模式', () => {
+    expect(Object.keys(KEYS_BY_MODE).sort()).toEqual(['depart', 'dogfight', 'free', 'mission', 'race']);
+  });
+
+  it('離場子模式 depart：確認後推鍵走 BTN.CONFIRM（momentary）', () => {
+    expect(keysForMode('depart')).toBe(DEPART_KEYS);
+    const confirm = DEPART_KEYS.find((k) => k.id === 'confirm');
+    expect(confirm?.btn).toBe(BTN.CONFIRM);
   });
 });
