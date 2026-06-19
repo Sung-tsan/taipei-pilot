@@ -14,6 +14,7 @@ import { spawnPose, RUNWAY_DIR } from './scene/airport.js';
 import { patternPoints, advanceCorridor, corridorAtc } from './scene/air-corridor.js';
 import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort, atcCleared, atcExit, atcTaxiToGate, atcDocked } from './scene/atc-phraseology.js';
 import { CorridorMarkers } from './scene/corridor-markers.js';
+import { GroundService } from './scene/ground-service.js';
 import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
@@ -135,6 +136,7 @@ const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY1
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
 // v4.1 空中走廊（airborne corridor）：起飛後接離場爬升→下風→進場下降的 traffic pattern（一趟完整航班空中段）。
 const corridorMarkers = new CorridorMarkers(scene);
+const groundService = new GroundService(scene); // v4.1-1 登機地勤車 + pushback 拖車
 let corridorActive = false;
 let corridorSlot = -1;
 let corridorIdx = 0;
@@ -890,6 +892,7 @@ function startDeparture(slot) {
 /** 結束離場流程（起飛/換機/重生）。 */
 function clearDeparture() {
   departPhase = 'none'; departGate = null; departSlot = -1; pushPath = null; boardReady = false;
+  groundService.clear();
   if (departKeysActive) { departKeysActive = false; net.sendMode(playMode); } // 還原遙控器 context 鍵
 }
 
@@ -1032,6 +1035,7 @@ function updateDeparture(slot, now, p) {
   const rwyLabel = DEPART_RWY === 'r28' ? 'RWY 28' : 'RWY 10';
   if (departPhase === 'boarding') {
     if (groundNav.active) groundNav.clear();
+    groundService.showBoarding(states[slot].pos, states[slot].heading, RUNWAY_DIR); // 加油/行李車
     boardT += DT;
     if (boardT >= BOARD_SEC) {
       if (!boardReady) { boardReady = true; departKeysActive = true; net.sendMode('depart'); } // 遙控器換「確認後推」鍵
@@ -1045,6 +1049,7 @@ function updateDeparture(slot, now, p) {
   if (departPhase === 'pushback') {
     if (groundNav.active) groundNav.clear();
     pushT = Math.min(1, pushT + DT / PUSH_SEC);
+    groundService.showTug(states[slot].pos, states[slot].heading); // 拖車在機鼻推
     if (pushPath) { // scripted 後推：位置/朝向 smoothstep 插值
       const e = pushT * pushT * (3 - 2 * pushT);
       states[slot].pos.x = pushPath.from.x + (pushPath.to.x - pushPath.from.x) * e;
@@ -1054,7 +1059,7 @@ function updateDeparture(slot, now, p) {
       states[slot].speed = 0; states[slot].mode = 'rolling';
     }
     setAtc(atcPushback(gLabel), true);
-    if (pushT >= 1) { departPhase = 'taxiOut'; gnGate = null; }
+    if (pushT >= 1) { departPhase = 'taxiOut'; gnGate = null; groundService.clear(); } // 後推完成 → 收地勤車
     return;
   }
   if (departPhase === 'taxiOut') {
