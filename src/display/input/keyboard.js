@@ -9,11 +9,13 @@ export class KeyboardInput {
     this.active = false;
     this.th = 0;
     this.gearUp = false;
+    this._confirm = false; // v4.1-1 離場確認（Enter）：上升緣脈衝，read() 取走即清
     /** @type {Set<string>} */
     this._down = new Set();
     window.addEventListener('keydown', (e) => {
       if (KEYS.has(e.code)) {
         if (e.code === 'KeyG' && !e.repeat) this.gearUp = !this.gearUp;
+        if (e.code === 'Enter' && !e.repeat) this._confirm = true; // 後推/許可確認
         this._down.add(e.code);
         this.active = true;
         e.preventDefault();
@@ -24,7 +26,7 @@ export class KeyboardInput {
 
   /**
    * @param {number} dt
-   * @returns {{ r:number, p:number, th:number, gearUp:boolean, fire:boolean, weaponSwitch:boolean, dodge:boolean }}
+   * @returns {{ r:number, p:number, th:number, gearUp:boolean, confirm:boolean, fire:boolean, weaponSwitch:boolean, dodge:boolean }}
    */
   read(dt) {
     const d = this._down;
@@ -34,8 +36,9 @@ export class KeyboardInput {
     if (d.has('KeyS')) this.th = Math.max(0, this.th - 0.7 * dt);
     if (d.has('Space')) this.th = 1;
     if (d.has('KeyX')) this.th = 0;
-    return { r, p, th: this.th, gearUp: this.gearUp, fire: d.has('KeyF'), weaponSwitch: d.has('KeyQ'), dodge: d.has('KeyZ') };
+    const confirm = this._confirm; this._confirm = false; // 取走脈衝
+    return { r, p, th: this.th, gearUp: this.gearUp, confirm, fire: d.has('KeyF'), weaponSwitch: d.has('KeyQ'), dodge: d.has('KeyZ') };
   }
 }
 
-const KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'Space', 'KeyX', 'KeyG', 'KeyF', 'KeyQ', 'KeyZ']);
+const KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'Space', 'KeyX', 'KeyG', 'KeyF', 'KeyQ', 'KeyZ', 'Enter']);

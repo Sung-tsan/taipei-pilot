@@ -48,7 +48,7 @@ export const P = {
  * @typedef {{ x:number, y:number, z:number }} Vec3
  * @typedef {{ r:number, p:number, th:number, gearUp?:boolean,
  *             rudder?:number, flaps?:number, trim?:number, landAnywhere?:boolean,
- *             fire?:boolean, weaponSwitch?:boolean, dodge?:boolean,
+ *             fire?:boolean, weaponSwitch?:boolean, dodge?:boolean, confirm?:boolean,
  *             wind?:{x:number,z:number}, gust?:{roll:number,pitch:number} }} Input
  *   rudder/flaps/trim＝複雜版選送（缺值＝中立 0，行為與簡單版/v1 完全一致）。
  *   landAnywhere＝真實模式：關閉機場外低空拉起、機場外觸地＝迫降（缺省 false＝與 v1 一致）。

@@ -155,6 +155,13 @@ test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72'
     { timeout: 30000 },
   ).toBe(true);
 
+  // ATR 現在 spawn-at-gate（離場流程）；本測只驗 GLB 載入+飛行，故 teleport 到跑道頭直接起飛。
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp;
+    const h = (100 * Math.PI) / 180; const dir = { x: Math.sin(h), z: -Math.cos(h) };
+    const s = tp.states[0]; const back = -1100; // 跑道西端
+    s.pos.x = dir.x * back; s.pos.z = dir.z * back; s.pos.y = 0; s.heading = h; s.mode = 'rolling'; s.speed = 0;
+  });
   // 鍵盤駕駛紅機（ATR-72，重機起飛滾行較長）→ 起飛
   await display.keyboard.down('Space');
   await expect.poll(
@@ -175,33 +182,36 @@ test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72'
 });
 
 // v4.0-1 P3：ATR-72 在地面 → 地面導航三合一（跟我車/綠中線燈/ATC 文字）引導到登機門。
-test('地面導航：ATR 在地面 → 滑行道路線建出 + ATC 文字框架', async ({ browser }) => {
+test('離場地面流程：ATR spawn-at-gate → 登機→後推→taxi 導航 + ATC', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
   const display = await ctx.newPage();
   await display.goto('/');
   await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
 
-  // 選 ATR-72（民航機）
+  // 選 ATR-72（民航機）→ 啟動駕駛 → spawn-at-gate、進「登機」階段
   await display.click('#playModeBtn');
   await display.click('#planeRow [data-plane="atr72"]');
   await display.click('#modeMenuClose');
-
-  // 啟動鍵盤駕駛（按 G 切起落架即 active）→ 飛機停在跑道（不起飛，維持地面）
   await display.keyboard.press('KeyG');
   await expect.poll(
-    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.departure.phase),
     { timeout: 30000 },
-  ).not.toBe('flying');
+  ).toBe('boarding');
 
-  // 地面導航啟用：滑行道路線（≥2 點）建出 + ATC 文字框架顯示「登機門」
+  // 確認後推（dev hook 模擬遙控器確認）→ 登機完成自動後推 → taxiOut（滑到跑道頭）
+  await display.evaluate(() => /** @type {any} */ (window).__tp.confirmDeparture());
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.departure.phase),
+    { timeout: 30000 },
+  ).toBe('taxiOut');
+
+  // taxiOut：滑行道路線（≥2 點）建出 + ATC「塔台」+ 跟我車
   await expect.poll(
     () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.active),
     { timeout: 30000 },
   ).toBe(true);
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._route.length)).toBeGreaterThan(1);
-  await expect(display.locator('#atcBanner')).toBeVisible();
-  await expect(display.locator('#atcBanner')).toContainText('塔台'); // ATC 文字框架（「松山塔台：滑行到 N 號門…」）
-  // 跟我車 GLB 載入完成（過 normalize 管線）
+  await expect(display.locator('#atcBanner')).toContainText('塔台');
   await expect.poll(
     () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav._carReady),
     { timeout: 30000 },
@@ -209,8 +219,8 @@ test('地面導航：ATR 在地面 → 滑行道路線建出 + ATC 文字框架'
   await ctx.close();
 });
 
-// v4.0-1 P4：地面碰撞「越界」——ATR 偏離綠線太遠 → 觸發越界事件（真實接 damagePct、安全/溫和提示）。
-test('地面碰撞越界：ATR 偏離綠線 → 觸發越界事件', async ({ browser }) => {
+// v4.0-1 P4：地面碰撞「越界」——離場 taxi 偏離綠線太遠 → 觸發越界事件（真實接 damagePct、安全/溫和提示）。
+test('地面碰撞越界：離場 taxi 偏離綠線 → 觸發越界事件', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
   const display = await ctx.newPage();
   await display.goto('/');
@@ -219,13 +229,18 @@ test('地面碰撞越界：ATR 偏離綠線 → 觸發越界事件', async ({ br
   await display.click('#playModeBtn');
   await display.click('#planeRow [data-plane="atr72"]');
   await display.click('#modeMenuClose');
-  await display.keyboard.press('KeyG'); // 駕駛、停在跑道（地面）
-  await expect.poll(
-    () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.active),
+  await display.keyboard.press('KeyG');
+  await expect.poll( // 先等 spawn-at-gate 進登機（避免確認脈衝被 startDeparture 重置）
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.departure.phase),
     { timeout: 30000 },
-  ).toBe(true);
+  ).toBe('boarding');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.confirmDeparture());
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.departure.phase),
+    { timeout: 30000 },
+  ).toBe('taxiOut'); // 進入 taxi 階段（綠線在跑道頭方向）
 
-  // teleport 到遠離綠線的草地（仍在機場 3.5km 內、維持地面）→ 越界
+  // teleport 到遠離綠線的草地（仍在機場內、維持地面）→ 越界
   await display.evaluate(() => { const s = /** @type {any} */ (window).__tp.states[0]; s.pos.x = 1500; s.pos.z = -1500; });
   await expect.poll(
     () => display.evaluate(() => !!/** @type {any} */ (window).__tp.lastTaxiOff),
