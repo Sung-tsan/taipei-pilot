@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   loadCollection, saveCollection, lightLandmark, recordMission, allLit, shouldCelebrate,
+  flyRoute, allRoutesFlown, shouldCelebrateNetwork,
 } from '../src/display/missions/collection-store.js';
 
 /** @param {Record<string,string>} [init] */
@@ -64,5 +65,43 @@ describe('collection-store（收集進度）', () => {
     expect([...c2.lit].sort()).toEqual(['a', 'b']);
     expect([...c2.missionsDone]).toEqual(['m1']);
     expect(c2.celebrated).toBe(true);
+  });
+
+  // —— V5 航網收集 ——
+  it('航網：空 storage → 無航線、未網慶祝', () => {
+    const c = loadCollection(mockStorage());
+    expect(c.routes.size).toBe(0);
+    expect(c.networkCelebrated).toBe(false);
+  });
+
+  it('flyRoute：新航線回 true、重複回 false', () => {
+    const c = loadCollection(mockStorage());
+    expect(flyRoute(c, 'tsa-khh')).toBe(true);
+    expect(flyRoute(c, 'tsa-khh')).toBe(false);
+    expect(c.routes.has('tsa-khh')).toBe(true);
+  });
+
+  it('allRoutesFlown + shouldCelebrateNetwork：九航線全通才 true、一次性', () => {
+    const c = loadCollection(mockStorage());
+    const all = ['r1', 'r2', 'r3'];
+    flyRoute(c, 'r1'); flyRoute(c, 'r2');
+    expect(allRoutesFlown(c, all)).toBe(false);
+    expect(shouldCelebrateNetwork(c, all)).toBe(false);
+    flyRoute(c, 'r3');
+    expect(allRoutesFlown(c, all)).toBe(true);
+    expect(shouldCelebrateNetwork(c, all)).toBe(true);
+    c.networkCelebrated = true;
+    expect(shouldCelebrateNetwork(c, all)).toBe(false); // 慶祝過不再轟炸
+  });
+
+  it('航網 save → load 往返（routes + networkCelebrated 持久化）', () => {
+    const s = mockStorage();
+    const c = loadCollection(s);
+    flyRoute(c, 'tsa-khh'); flyRoute(c, 'tsa-knh');
+    c.networkCelebrated = true;
+    saveCollection(s, c);
+    const c2 = loadCollection(s);
+    expect([...c2.routes].sort()).toEqual(['tsa-khh', 'tsa-knh']);
+    expect(c2.networkCelebrated).toBe(true);
   });
 });

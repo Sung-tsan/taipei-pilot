@@ -9,7 +9,7 @@ const LANDMARKS = {
 };
 
 function makeRunner(slots = 1) {
-  const collection = { lit: new Set(), missionsDone: new Set(), celebrated: false };
+  const collection = { lit: new Set(), missionsDone: new Set(), celebrated: false, routes: new Set(), networkCelebrated: false };
   const pool = [
     { id: 'find_L1', type: MISSION_TYPES.LANDMARK_FIND, targetId: 'L1', pos: { x: 0, z: 0 }, size: 5, difficulty: 1 },
     { id: 'find_L2', type: MISSION_TYPES.LANDMARK_FIND, targetId: 'L2', pos: { x: 1000, z: 0 }, size: 5, difficulty: 1 },

@@ -15,8 +15,9 @@ import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort
 import { CorridorMarkers } from './scene/corridor-markers.js';
 import { GroundService } from './scene/ground-service.js';
 import { makeAirportScene } from './scene/airport-scene.js';
-import { AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, DEMO_AIRPORTS, routesFrom, routeOtherEnd, routeDistanceKm, airport as airportSpec, mapXY } from './scene/airports.js';
+import { AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, DEMO_AIRPORTS, ROUTES, ROUTE_IDS, routesFrom, routeOtherEnd, routeDistanceKm, airport as airportSpec, mapXY } from './scene/airports.js';
 import { makeCruise, stepCruise, cruisePhaseLabel, cruiseEtaSec } from './missions/route-engine.js';
+import { makeFuel, burn, burnRate, fuelFrac, isLow, refuel, canReach, routeFuelCostSec } from './missions/fuel.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
@@ -39,7 +40,7 @@ import { ROAD_WIDTH } from './scene/city-gen.js';
 import { RIVERS } from './scene/rivers.js';
 import { MissionRunner } from './missions/mission-runner.js';
 import { airspaceTaipei } from './missions/airspace-taipei.js';
-import { loadCollection, saveCollection } from './missions/collection-store.js';
+import { loadCollection, saveCollection, flyRoute, shouldCelebrateNetwork } from './missions/collection-store.js';
 import { ringsAlongRiver, MISSION_TYPES } from './missions/missions.js';
 import { RACE_TYPES, makeRace, updateRacer, ranking, allFinished } from './missions/race.js';
 import { RaceMarkers } from './missions/race-markers.js';
@@ -82,6 +83,13 @@ const settings = loadSettings();
 const conseq = Array.from({ length: MAX_SLOTS }, () => makeConsequence(settings.mode, settings.heartsMax));
 /** @type {({terrain:string, result:string}|null)[]} 最近一次迫降結果（e2e/除錯用） */
 const lastForcedLanding = Array.from({ length: MAX_SLOTS }, () => null);
+
+// —— V5 油量（只真實模式咬；安全/溫和無限）：每架一份，spawn/落地/換機補滿 ——
+const fuel = Array.from({ length: MAX_SLOTS }, () => makeFuel(900)); // 初值；resetFuel 依機種重設
+const engineOut = states.map(() => false);    // 油盡熄火（真實）→ 引擎死、強制滑翔 → 接迫降（v1.1-2 閉環）
+const lowFuelWarned = states.map(() => false); // 油低警告一次性（per slot）
+/** 補滿油 + 清熄火/警告（spawn/落地/換機）。 @param {number} i */
+function resetFuel(i) { fuel[i] = makeFuel(planeSpec(planeId).fuelSec); engineOut[i] = false; lowFuelWarned[i] = false; }
 
 // —— 任務系統（v1.1-4）：解析器 + runner + 收集 + 玩法模式 ——
 const lmById = new Map(air.landmarks.map((l) => [l.id, l]));
@@ -338,6 +346,7 @@ function refreshDrivers() {
       // v4.1-1：ATR（民航）spawn-at-gate → 啟動離場流程（登機→後推→taxi→排序→起飛）。
       if (isCivil(planeId) && (playMode === 'free' || playMode === 'mission')) startDeparture(i);
       conseq[i] = makeConsequence(settings.mode, settings.heartsMax); // 新上線＝照當前設定重置後果狀態
+      resetFuel(i); // 新上線＝滿油
       planes[i].setDamaged(false);
       if (playMode === 'mission') {
         runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
@@ -502,6 +511,7 @@ function applyPlayMode(mode) {
 function setPlane(id) {
   planeId = PLANE_IDS.includes(/** @type {any} */ (id)) ? id : DEFAULT_PLANE;
   planes.forEach((p) => p.setModel(planeSpec(planeId).model));
+  for (let i = 0; i < MAX_SLOTS; i++) resetFuel(i); // 換機＝換油箱（新機種 fuelSec）
 }
 
 playModeBtn.addEventListener('click', () => { renderModeMenuUI(); modeMenuEl.classList.remove('hidden'); });
@@ -541,15 +551,29 @@ function renderCollection() {
   }).join('');
   $('collectionCount').textContent = `點亮 ${collection.lit.size}/${landmarkIds.length}　任務完成 ${collection.missionsDone.size}`;
   $('celebrateReplay').style.display = collection.celebrated ? 'inline-block' : 'none';
+  // V5 航網收集：飛過的航線點亮（地理教材 fact）。
+  $('routeCollectionList').innerHTML = ROUTES.map((r) => {
+    const flown = collection.routes.has(r.id);
+    return `<li class="${flown ? 'lit' : ''}">${flown ? '✈️' : '☆'} ${r.name}${flown ? `<small>${r.fact.text}</small>` : ''}</li>`;
+  }).join('');
+  $('routeCollectionCount').textContent = `航線 ${collection.routes.size}/${ROUTE_IDS.length}`;
+  $('netCelebrateReplay').style.display = collection.networkCelebrated ? 'inline-block' : 'none';
 }
 $('collectionBtn').addEventListener('click', () => { renderCollection(); collectionEl.classList.remove('hidden'); });
 $('collectionClose').addEventListener('click', () => collectionEl.classList.add('hidden'));
 
 // —— 台北飛透透大慶祝（一次性 gate；收集簿可重看）——
 const celebrationEl = $('celebration');
-function triggerCelebration() { celebrationEl.classList.remove('hidden'); audio.fireworks(); }
+const CELEB_LANDMARK = { title: '台北飛透透！', sub: '全部地標都點亮了，你把整個台北都飛遍了！👏' };
+/** 大慶祝（地標全亮 / 九航線全通共用一個 modal，換標題/文案）。 @param {string} [title] @param {string} [sub] */
+function triggerCelebration(title = CELEB_LANDMARK.title, sub = CELEB_LANDMARK.sub) {
+  $('celebTitle').textContent = title;
+  $('celebSub').textContent = sub;
+  celebrationEl.classList.remove('hidden'); audio.fireworks();
+}
 $('celebrationClose').addEventListener('click', () => celebrationEl.classList.add('hidden'));
 $('celebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration(); });
+$('netCelebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration('九航線全通！🎉', '你飛遍台灣九座機場的天空，成為真正的小飛官！👏'); });
 
 /** @param {number} slot @param {string} text */
 function toast(slot, text) {
@@ -567,6 +591,11 @@ let cruiseSlot = -1;          // 飛航線的 slot（航線飛行＝單機主導
 let cruiseDest = /** @type {string|null} */ (null);   // 巡航目的地機場 id
 let cruiseRouteId = /** @type {string|null} */ (null); // 巡航航線 id（v5.0-2 收集點亮用）
 let lastRouteFlown = /** @type {string|null} */ (null); // 最近完成的航線 id（e2e/收集 hook）
+/** @type {{routeId:string, pax:number}|null} 抵達後待落地結算的航班（載客/準點） */ let lastFlight = null;
+/** 各機種載客數（航班任務「載客」；遊戲化）。 */
+const PAX = /** @type {Record<string,number>} */ ({ t34c: 2, f16: 1, atr72: 60, b737: 150, a330: 250 });
+/** @param {string} id @returns {number} */
+const paxFor = (id) => PAX[id] ?? 20;
 
 /** 某機場是否本階段可飛（v5.0-1 demo 三場；v5.1-2 解鎖全部）。 @param {string} id */
 const airportUnlocked = (id) => DEMO_AIRPORTS.includes(/** @type {any} */ (id));
@@ -608,18 +637,40 @@ function placeOnApproach(slot) {
   planes[slot].setDamaged(false);
 }
 
-/** 巡航抵達：load 目的地 airspace + 飛機放到最終進場 + 收尾。 */
+/** 巡航抵達：load 目的地 airspace + 飛機放最終進場 + 點亮航線（航網收集）+ 九航線全通慶祝。 */
 function arriveCruise() {
   if (!cruise || !cruiseDest) return;
   const slot = cruiseSlot;
+  const routeId = /** @type {string} */ (cruiseRouteId);
   loadAirport(cruiseDest);
   placeOnApproach(slot);
   toast(slot, `☁️ 抵達 ${air.spec.name} 上空，對正跑道降落！`);
   audio.landingChime();
-  lastRouteFlown = cruiseRouteId;
+  lastRouteFlown = routeId;
+  lastFlight = { routeId, pax: paxFor(planeId) }; // 落地時結算載客/準點
+  // 航網收集：飛過這條航線即點亮（飛抵＝飛過）；九航線全通 → 一次性大慶祝。
+  flyRoute(collection, routeId);
+  saveCollection(localStorage, collection);
+  if (shouldCelebrateNetwork(collection, ROUTE_IDS)) {
+    collection.networkCelebrated = true; saveCollection(localStorage, collection);
+    triggerCelebration('九航線全通！🎉', '你飛遍台灣九座機場的天空，成為真正的小飛官！👏');
+  }
   cruise = null; cruiseSlot = -1; cruiseDest = null; cruiseRouteId = null;
   selectedRoute = null; selectedDest = null;
   cruiseOverlayEl.classList.remove('show');
+}
+
+/** 巡航中油盡（真實模式、航程不足）→ 海上迫降（複用 v1.1-2 判定）+ 返出發機場。 @param {number} slot */
+function ditchCruise(slot) {
+  if (!cruise) return;
+  const destName = airportSpec(cruiseDest ?? '').name;
+  judgeForcedLanding({ terrain: TERRAIN.WATER, speed: states[slot].speed, sinkRate: states[slot].lastSink, bank: 0 }); // 複用迫降品質（water 寬鬆）
+  audio.forcedLandingSound('water'); net.sendFx(slot, 'bump');
+  toast(slot, `⛽ 油不夠飛到 ${destName}！海上迫降 🌊 換大一點的飛機再試`);
+  cruise = null; cruiseSlot = -1; cruiseDest = null; cruiseRouteId = null;
+  selectedRoute = null; selectedDest = null;
+  cruiseOverlayEl.classList.remove('show');
+  respawnAtRunway(slot); // 返回出發機場跑道（滿油；航線未點亮＝沒飛到）
 }
 
 /**
@@ -632,6 +683,12 @@ function updateCruiseStep(i, input) {
   if (cs.justEnteredCruise) { cruiseOverlayEl.classList.add('show'); toast(i, '☁️ 進入雲上巡航（自動快轉）'); audio.atcVoice('Climbing to cruise altitude. Enjoy the flight.'); }
   if (cs.justArrived) { arriveCruise(); return true; }
   if (cruise && cruise.phase === 'cruise') { // 半自動平飛快轉：玩家可微調航向
+    // 油耗（只真實）：整條航線成本攤在巡航秒數上；航程不足 → 油盡 → 海上迫降返航（航程 gate 教學）。
+    if (conseq[i].mode === 'real') {
+      const fr = burn(fuel[i], routeFuelCostSec(cruise.distanceKm) * (DT / cruise.durationSec));
+      if (!lowFuelWarned[i] && isLow(fuel[i])) { lowFuelWarned[i] = true; toast(i, '⛽ 巡航油量偏低！'); audio.stallWarn(); }
+      if (fr.justEmptied) { ditchCruise(i); return true; }
+    }
     stepPlane(states[i], { r: (input.r ?? 0) * 0.25, p: -0.015, th: 0.85, gearUp: true }, DT, env, flightParams(planeId));
     return true;
   }
@@ -696,7 +753,10 @@ function refreshRouteInfo() {
     routeDepartBtn.disabled = true; return;
   }
   const km = routeDistanceKm(curAirportId, mapPendingDest);
-  routeListEl.innerHTML = `🛫 <b>${air.spec.name}</b> → <b>${AIRPORTS[mapPendingDest].name}</b>　約 ${km} 公里<br/><small>${airportSpec(mapPendingDest).signature}</small>`;
+  // 航程 gate：目前機種飛得到嗎（真實模式飛不到 → 油盡海上迫降；安全/溫和無限）。
+  const reach = canReach(planeSpec(planeId).fuelSec, km);
+  const fuelNote = reach ? '⛽ 油量足夠' : `⛽ <span style="color:#e0533d">這台飛機油可能不夠（換大油箱機種）</span>`;
+  routeListEl.innerHTML = `🛫 <b>${air.spec.name}</b> → <b>${AIRPORTS[mapPendingDest].name}</b>　約 ${km} 公里<br/><small>${airportSpec(mapPendingDest).signature}　·　${fuelNote}</small>`;
   routeDepartBtn.disabled = false;
 }
 
@@ -772,6 +832,7 @@ function reportPState(now) {
 function respawnAtRunway(i) {
   Object.assign(states[i], makePlane(air.spawnPose(i)));
   planes[i].setDamaged(false);
+  resetFuel(i); // 回跑道＝滿油（清熄火）
   if (departSlot === i) clearDeparture(); // 離場中墜機 → 收離場狀態（避免在跑道跑 pushback/taxi 邏輯）
   if (corridorSlot === i) clearCorridor();
   arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
@@ -1330,6 +1391,7 @@ function loop(/** @type {number} */ now) {
     for (let i = 0; i < MAX_SLOTS; i++) {
       if (!wasDriven[i]) continue;
       const input = inputFor(i);
+      if (engineOut[i]) input.th = 0; // V5 油盡熄火：引擎死、推力 0 → 滑翔迫降（接 v1.1-2）
       input.landAnywhere = conseq[i].mode === 'real'; // 真實模式：機場外可迫降
       if (conseq[i].mode === 'real' && states[i].mode === 'flying') { // v3.0-2 側風/亂流（只真實模式）
         const wf = weatherForces(weather.type);
@@ -1368,6 +1430,7 @@ function loop(/** @type {number} */ now) {
       }
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
+        if (lastFlight) { toast(i, `🛬 航班完成！載客 ${lastFlight.pax} 人・準點抵達 ⭐`); audio.missionSuccess(); lastFlight = null; } // V5 載客+準點結算
         // v4.0-2 到場流程啟動：民航機落地 → 塔台指派 gate（P2）+ 進「脫離跑道」階段（P1）。
         if (isCivil(planeId)) {
           clearDeparture(); clearCorridor(); // 落地＝到場：清離場/空中走廊（避免殘留擋住到場流程）
@@ -1390,6 +1453,12 @@ function loop(/** @type {number} */ now) {
       if (conseq[i].mode === 'real' && states[i].mode === 'flying' && now > windDamageCd[i] && weatherForces(weather.type).turb > 0) {
         const pct = turbulenceDamagePct({ bank: states[i].bank, pitch: states[i].pitch });
         if (pct > 0) { windDamageCd[i] = now + 1200; applyWeatherDamage(i, pct, '亂流'); }
+      }
+      // V5 油量（本地飛行；只真實模式咬，安全/溫和不耗）：耗油 → 油低警告 → 油盡熄火接迫降。
+      if (conseq[i].mode === 'real' && states[i].mode === 'flying' && !engineOut[i]) {
+        const fr = burn(fuel[i], DT * burnRate(input.th));
+        if (!lowFuelWarned[i] && isLow(fuel[i])) { lowFuelWarned[i] = true; toast(i, '⛽ 油量偏低！快找機場降落'); audio.stallWarn(); net.sendFx(i, 'bump'); }
+        if (fr.justEmptied) { engineOut[i] = true; toast(i, '⛽ 沒油了！引擎熄火，找地方迫降 🛬'); audio.heartLoss(); net.sendFx(i, 'bump'); }
       }
     }
     if (playMode === 'dogfight') updateDogfight(now); // 空戰：鎖定/發射/彈丸/命中
@@ -1452,6 +1521,10 @@ function loop(/** @type {number} */ now) {
           altText += `　🌬<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span>${wf.windSpeed}`;
         }
       }
+      // V5 油量表：真實＝剩餘%（≤20% 紅字警示）；安全/溫和＝∞（寬鬆）。
+      altText += conseq[i].mode === 'real'
+        ? `　<span style="color:${isLow(fuel[i]) ? '#e0533d' : 'inherit'}">⛽${Math.round(fuelFrac(fuel[i]) * 100)}%</span>`
+        : '　⛽∞';
       hud.setAlt(i, altText);
     } else {
       hud.setMode(i, departHintFor(i)); // 離場流程相關提示（登機/確認後推/滑行…），否則「推滿油門起飛」
@@ -1557,6 +1630,10 @@ requestAnimationFrame(loop);
   get cruise() { return cruise ? { phase: cruise.phase, progress: cruise.progress, dest: cruiseDest, routeId: cruiseRouteId } : null; },
   get selectedDest() { return selectedDest; },
   get lastRouteFlown() { return lastRouteFlown; },
+  get fuel() { return fuel.map((f) => fuelFrac(f)); }, // v5.0-2 e2e：油量比例
+  get engineOut() { return [...engineOut]; },
+  setFuel: (/** @type {number} */ slot, /** @type {number} */ frac) => { if (fuel[slot]) { fuel[slot].sec = fuel[slot].max * frac; lowFuelWarned[slot] = false; } }, // e2e：設定油量
+  canReachDest: (/** @type {string} */ destId) => canReach(planeSpec(planeId).fuelSec, routeDistanceKm(curAirportId, destId)), // e2e：航程 gate
   arriveNow: () => { if (cruise) { cruise.phase = 'cruise'; cruise.progress = 1; cruise.elapsed = cruise.durationSec; arriveCruise(); } }, // e2e：快轉巡航抵達
   airports: AIRPORTS,
 };

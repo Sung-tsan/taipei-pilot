@@ -742,3 +742,90 @@ test('V5 航線：松山→金門 切換到離島機場（霧招牌）', async (
   expect(await display.evaluate(() => /** @type {any} */ (window).__tp.airportName)).toContain('金門');
   await ctx.close();
 });
+
+// v5.0-2：航網收集——飛抵航線即點亮（collection.routes）。
+test('V5 航網收集：飛松山→高雄抵達 → 航線點亮', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.evaluate(() => /** @type {any} */ (window).__tp.selectRoute('khh'));
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect.poll(
+    () => display.evaluate(() => !!/** @type {any} */ (window).__tp.cruise),
+    { timeout: 6000 },
+  ).toBe(true);
+  await display.keyboard.up('Space');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.arriveNow());
+  // 航線點亮（飛抵＝飛過）
+  const routes = await display.evaluate(() => [.../** @type {any} */ (window).__tp.collection.routes]);
+  expect(routes).toContain('tsa-khh');
+  await ctx.close();
+});
+
+// v5.0-2：油量——真實模式耗油 → 油盡 → 引擎熄火（th 強制 0、接 v1.1-2 滑翔迫降）。
+// 安全/溫和不耗（下方一併驗 HUD ⛽∞）。注意：熄火後墜落點地形（草地迫降 vs 撞建築）屬 v1.1-2，
+// 由真機 HITL + forced-landing 單測覆蓋；此處驗 V5 新增的「油盡熄火」本身（deterministic）。
+test('V5 油量：真實模式油盡 → 引擎熄火；安全模式 ⛽∞ 不耗', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 安全模式（預設）：飛行不耗油（油量恆滿）→ HUD ⛽∞。Space 全程按住保持滯空。
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect(display.locator('#hud-0 .alt-band')).toContainText('⛽∞');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.fuel[0])).toBe(1); // 安全不耗
+
+  // 切真實模式（飛行中、油門續按）→ 設油量見底 → 下一次耗油即熄火
+  await display.click('#settingsBtn');
+  await display.click('#modeRow [data-mode="real"]');
+  await display.click('#settingsClose');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.setFuel(0, 0.0005));
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.engineOut[0]),
+    { timeout: 8000 },
+  ).toBe(true);
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.fuel[0])).toBe(0); // 油盡
+  await display.keyboard.up('Space');
+  await ctx.close();
+});
+
+// v5.0-2：九航線全通大慶祝（seed 8 條 → 飛第 9 條 → 一次性慶祝）。
+test('V5 九航線全通：飛完最後一條 → 大慶祝', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  // seed 8 條（缺 tsa-khh）→ 飛 tsa-khh 即全通
+  await display.addInitScript(() => {
+    localStorage.setItem('tp_routes_flown', 'tsa-tpe,tsa-rmq,tsa-hun,tsa-ttt,tsa-mzg,tsa-knh,tsa-lzn,khh-mzg');
+  });
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.evaluate(() => /** @type {any} */ (window).__tp.selectRoute('khh'));
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect.poll(
+    () => display.evaluate(() => !!/** @type {any} */ (window).__tp.cruise),
+    { timeout: 6000 },
+  ).toBe(true);
+  await display.keyboard.up('Space');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.arriveNow());
+
+  // 九航線全通 → 大慶祝 modal 顯示
+  await expect(display.locator('#celebration')).toBeVisible();
+  await expect(display.locator('#celebTitle')).toContainText('九航線全通');
+  await ctx.close();
+});

@@ -161,9 +161,11 @@
     #collectionList li { background: var(--ui-panel-2); border-radius: var(--r-md); padding: 10px 14px; font-size: 16px; opacity: .55; }
     #collectionList li.lit { opacity: 1; background: #3a4a3a; }
     #collectionList li small { display: block; font-size: 12px; opacity: .8; margin-top: 2px; }
-    #collectionClose, #celebrateReplay { border: none; cursor: pointer; border-radius: var(--r-md); padding: 12px 18px; font-size: 16px; font-weight: 800; }
+    #collectionClose, #celebrateReplay, #netCelebrateReplay { border: none; cursor: pointer; border-radius: var(--r-md); padding: 12px 18px; font-size: 16px; font-weight: 800; }
     #collectionClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); }
-    #celebrateReplay { background: var(--candy-amber); color: var(--ui-bg); --press-shadow: var(--candy-amber-d); display: none; }
+    #celebrateReplay, #netCelebrateReplay { background: var(--candy-amber); color: var(--ui-bg); --press-shadow: var(--candy-amber-d); display: none; }
+    .collection-sub { font-size: 15px; font-weight: 700; opacity: .9; margin-top: 6px; border-top: 1px solid #ffffff1a; padding-top: 12px; }
+    #routeCollectionCount { font-size: 13px; opacity: .75; }
 
     /* —— 台北飛透透大慶祝 —— */
     #celebration { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: radial-gradient(ellipse at center, #1a2a4a 0%, #0b0f18 80%); text-align: center; }
@@ -387,7 +389,11 @@
       <h2>📖 收集簿</h2>
       <div id="collectionCount"></div>
       <ul id="collectionList"></ul>
+      <div class="collection-sub">🗺 航網（飛過的航線）</div>
+      <div id="routeCollectionCount"></div>
+      <ul id="routeCollectionList"></ul>
       <button id="celebrateReplay" class="tactile">🎆 重看台北飛透透</button>
+      <button id="netCelebrateReplay" class="tactile">🎆 重看九航線全通</button>
       <button id="collectionClose" class="tactile">完成</button>
     </div>
   </div>
@@ -395,8 +401,8 @@
   <!-- 台北飛透透大慶祝（全地標點亮一次性 gate）-->
   <div id="celebration" class="hidden">
     <div class="fireworks">🎆🎇🎆</div>
-    <h1>台北飛透透！</h1>
-    <p>全部地標都點亮了，你把整個台北都飛遍了！👏</p>
+    <h1 id="celebTitle">台北飛透透！</h1>
+    <p id="celebSub">全部地標都點亮了，你把整個台北都飛遍了！👏</p>
     <button id="celebrationClose" class="tactile">耶！</button>
   </div>
 

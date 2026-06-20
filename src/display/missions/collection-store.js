@@ -6,9 +6,11 @@
 const LIT_KEY = 'tp_landmarks_lit';
 const DONE_KEY = 'tp_missions_done';
 const CELEB_KEY = 'tp_celebrated';
+const ROUTES_KEY = 'tp_routes_flown';        // V5 航網收集：飛過的航線
+const NET_CELEB_KEY = 'tp_network_celebrated'; // V5 九航線全通一次性 gate
 
 /** @typedef {{ getItem:(k:string)=>string|null, setItem:(k:string,v:string)=>void }} StorageLike */
-/** @typedef {{ lit:Set<string>, missionsDone:Set<string>, celebrated:boolean }} Collection */
+/** @typedef {{ lit:Set<string>, missionsDone:Set<string>, celebrated:boolean, routes:Set<string>, networkCelebrated:boolean }} Collection */
 
 /** @param {string|null} csv @returns {Set<string>} */
 function parseSet(csv) {
@@ -21,6 +23,8 @@ export function loadCollection(storage = localStorage) {
     lit: parseSet(storage.getItem(LIT_KEY)),
     missionsDone: parseSet(storage.getItem(DONE_KEY)),
     celebrated: storage.getItem(CELEB_KEY) === '1',
+    routes: parseSet(storage.getItem(ROUTES_KEY)),         // V5 航網
+    networkCelebrated: storage.getItem(NET_CELEB_KEY) === '1',
   };
 }
 
@@ -29,6 +33,8 @@ export function saveCollection(storage, c) {
   storage.setItem(LIT_KEY, [...c.lit].join(','));
   storage.setItem(DONE_KEY, [...c.missionsDone].join(','));
   storage.setItem(CELEB_KEY, c.celebrated ? '1' : '0');
+  storage.setItem(ROUTES_KEY, [...c.routes].join(','));
+  storage.setItem(NET_CELEB_KEY, c.networkCelebrated ? '1' : '0');
 }
 
 /** 點亮地標（全家共享）。回傳是否為新點亮。 @param {Collection} c @param {string} id */
@@ -53,4 +59,23 @@ export function allLit(c, allLandmarkIds) {
 /** 是否該觸發「台北飛透透」大慶祝（全點亮 且 尚未慶祝過＝一次性） @param {Collection} c @param {string[]} allLandmarkIds */
 export function shouldCelebrate(c, allLandmarkIds) {
   return allLit(c, allLandmarkIds) && !c.celebrated;
+}
+
+// —— V5 航網收集（飛過的航線點亮；九航線全通大慶祝）——
+
+/** 點亮一條飛過的航線（全家共享）。回傳是否為新點亮。 @param {Collection} c @param {string} routeId */
+export function flyRoute(c, routeId) {
+  if (c.routes.has(routeId)) return false;
+  c.routes.add(routeId);
+  return true;
+}
+
+/** 是否九航線全通。 @param {Collection} c @param {string[]} allRouteIds */
+export function allRoutesFlown(c, allRouteIds) {
+  return allRouteIds.length > 0 && allRouteIds.every((id) => c.routes.has(id));
+}
+
+/** 是否該觸發「九航線全通」大慶祝（全飛過 且 尚未慶祝過＝一次性）。 @param {Collection} c @param {string[]} allRouteIds */
+export function shouldCelebrateNetwork(c, allRouteIds) {
+  return allRoutesFlown(c, allRouteIds) && !c.networkCelebrated;
 }
