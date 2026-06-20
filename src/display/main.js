@@ -134,6 +134,14 @@ const PUSH_SEC = 3.2;       // pushback 推出時長
 const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
 const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY10，與 spawnPose 起飛朝向一致）
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
+/** 空中走廊各 leg 的英文 ATC 語音（TTS；en ATC 較自然、國際本就英文）。 @type {Record<string,string>} */
+const CORRIDOR_VOICE = {
+  climb: 'Climb on the departure.',
+  cross: 'Turn crosswind.',
+  down: 'Downwind leg. Maintain altitude.',
+  base: 'Turn base. Begin descent.',
+  final: 'Final approach. Runway one zero, cleared to land.',
+};
 // v4.1 空中走廊（airborne corridor）：起飛後接離場爬升→下風→進場下降的 traffic pattern（一趟完整航班空中段）。
 const corridorMarkers = new CorridorMarkers(scene);
 const groundService = new GroundService(scene); // v4.1-1 登機地勤車 + pushback 拖車
@@ -362,6 +370,7 @@ refreshDrivers();
 // —— 音效（瀏覽器規定：第一次 gesture 才出聲）——（audio 實例在天氣區塊前已建）
 function enableAudio() {
   audio.ensure();
+  try { window.speechSynthesis?.getVoices(); } catch { /* 預熱 TTS 語音清單（async 載入；ATC 念稿前備齊） */ }
   $('soundHint').style.display = audio.enabled ? 'none' : 'block';
 }
 window.addEventListener('pointerdown', enableAudio);
@@ -868,7 +877,7 @@ function setAtc(text, radio = false) {
   const el = $('atcBanner');
   el.textContent = text;
   el.classList.toggle('show', !!text);
-  if (radio && text && text !== lastAtc) { audio.atcRadio(); audio.atcVoice(text); } // v4.1-2 squelch + 念出指示（瀏覽器 TTS）
+  if (radio && text && text !== lastAtc) audio.atcRadio(); // v4.1-2 柔和無線電咔（語音改各階段轉換用英文念，見 atcSay）
   lastAtc = text;
 }
 
@@ -931,10 +940,12 @@ function updateAirCorridor(now) {
     corridorMarkers.update(DT); return; // 地面（剛起飛前/落地後）：環不推進
   }
   const p = states[corridorSlot].pos;
+  const prevIdx = corridorIdx;
   corridorIdx = advanceCorridor(corridorPts, p, corridorIdx);
   corridorMarkers.show(corridorPts, corridorIdx);
   corridorMarkers.update(DT);
   setAtc(corridorAtc(corridorPts[corridorIdx]), true); // 航點變更時響無線電（每 leg）
+  if (corridorIdx !== prevIdx) audio.atcVoice(CORRIDOR_VOICE[corridorPts[corridorIdx]?.leg] ?? ''); // 進新航點 → 念英文指引
 }
 
 /** 開始後推（pushback）：scripted 把飛機從 gate 推到 apron 接點、轉向 taxi 方向。 @param {number} slot */
@@ -954,6 +965,7 @@ function startPushback(slot) {
   pushPath = { from, to, h0: states[slot].heading, h1 };
   if (departKeysActive) { departKeysActive = false; net.sendMode(playMode); } // 確認完成 → 遙控器還原
   toast(slot, '🚜 開始後推（pushback）！');
+  audio.atcVoice('Pushback approved. Stand by for taxi.');
 }
 
 /** 越界偵測（taxi 速度域、route 顯示時）：偏離綠線太遠 → 真實 damagePct、安全/溫和提示。 */
@@ -1014,6 +1026,7 @@ function updateArrival(slot, now, p) {
       toast(slot, `🛬 停妥靠橋！歡迎抵達松山 ${gNode.label ?? ''}`);
       audio.landingChime();
       setAtc(atcDocked(gNode.label ?? '登機門'), true);
+      audio.atcVoice('Welcome to Songshan. See you next time.');
     }
   }
   if (arrivalPhase === 'parked') { groundNav.update(DT, p, now); return; } // 停妥：僅跑空橋動畫，ATC 維持「已靠橋」
@@ -1028,6 +1041,7 @@ function updateArrival(slot, now, p) {
       const parW = par ? nodeWorld(/** @type {any} */ (taxi.nodes.get(par)), RUNWAY_DIR) : null;
       const route = [{ x: p.x, z: p.z }, exitW, ...(parW ? [parW] : [])];
       groundNav.setRoute(route, atcExit(exitNode?.label ?? '脫離道', gateLabel));
+      audio.atcVoice('Vacate the runway. Taxi to your gate, follow the green lights.');
     }
   } else if (arrivalPhase === 'taxi' && (!groundNav.active || gnGate == null)) { // P2：滑到「指派」門
     gnGate = arrivalGate;
@@ -1036,6 +1050,7 @@ function updateArrival(slot, now, p) {
     const lbl = gnGate ? atcTaxiToGate(gateLabel) : '';
     const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
     groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, lbl);
+    audio.atcVoice('Taxi to your gate. Follow the green lights to the bridge.');
   }
   groundNav.update(DT, p, now);
   setAtc(groundNav.atcText, true);
@@ -1050,7 +1065,7 @@ function updateDeparture(slot, now, p) {
     groundService.showBoarding(states[slot].pos, states[slot].heading, RUNWAY_DIR); // 加油/行李車
     boardT += DT;
     if (boardT >= BOARD_SEC) {
-      if (!boardReady) { boardReady = true; departKeysActive = true; net.sendMode('depart'); } // 遙控器換「確認後推」鍵
+      if (!boardReady) { boardReady = true; departKeysActive = true; net.sendMode('depart'); audio.atcVoice('Boarding complete. Request pushback. Press confirm.'); } // 遙控器換「確認後推」鍵
       setAtc(atcBoardComplete(gLabel), true);
       if (pendingConfirm || boardT >= BOARD_SEC + 8) { pendingConfirm = false; startPushback(slot); } // 確認或逾時自動
     } else {
@@ -1080,12 +1095,14 @@ function updateDeparture(slot, now, p) {
     const holdW = holdNode ? nodeWorld(/** @type {any} */ (holdNode), RUNWAY_DIR) : null;
     if (holdW && Math.hypot(holdW.x - p.x, holdW.z - p.z) < ARRIVAL_REACH_M) {
       departPhase = 'holdShort'; holdT = 0; groundNav.clear();
+      audio.atcVoice('Hold short runway one zero. One aircraft ahead departing.');
     } else if (!groundNav.active || gnGate !== holdId) {
       gnGate = holdId;
       const start = nearestNode(taxi, p, RUNWAY_DIR);
       const path = start ? departureRoute(taxi, start, DEPART_RWY) : [];
       const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
       groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, atcTaxiToHold(rwyLabel));
+      audio.atcVoice('Taxi to runway one zero holding point. Follow the green lights.');
     }
     groundNav.update(DT, p, now);
     setAtc(groundNav.atcText, true);
@@ -1100,6 +1117,7 @@ function updateDeparture(slot, now, p) {
       departPhase = 'cleared'; gnGate = null;
       setAtc(atcCleared(rwyLabel), true);
       toast(slot, '🛫 可以起飛了！推滿油門'); audio.landingChime();
+      audio.atcVoice('Little Pilot, runway one zero, cleared for takeoff.');
     }
     return;
   }

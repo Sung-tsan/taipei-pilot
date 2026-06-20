@@ -128,27 +128,36 @@ export class GameAudio {
     osc.stop(ctx.currentTime + 0.35);
   }
 
-  /** ATC 塔台無線電「咔」聲（收發 squelch）：短嘶聲（band-pass 感雜訊爆）+ 雙咔（對講機感）。 */
+  /** ATC 無線電「咔」（收發 squelch）：柔和雙短音 blip（不是刺耳電磁雜訊；HITL 2026-06-20）。 */
   atcRadio() {
     if (!this._on()) return;
-    this._noise(0.08, 0.11, 2000, 1300, 0);      // 短嘶聲（高頻雜訊爆＝無線電底噪）
-    this._tone('square', 640, 600, 0.03, 0.17, 0);      // 收咔
-    this._tone('square', 540, 510, 0.03, 0.13, 0.1);    // 發咔（尾）
+    this._tone('sine', 1050, 950, 0.025, 0.05, 0);    // 收咔（柔）
+    this._tone('sine', 760, 700, 0.025, 0.04, 0.07);  // 發咔（柔，尾）
+  }
+
+  /** 挑一個自然的英文系統語音（避開機械感；getVoices 在使用者互動後才齊全）。 */
+  _pickVoice() {
+    const synth = /** @type {any} */ (window).speechSynthesis;
+    const vs = (synth?.getVoices?.() || []);
+    const pref = ['Samantha', 'Alex', 'Karen', 'Daniel', 'Moira', 'Google US English', 'Microsoft'];
+    for (const name of pref) { const v = vs.find((/** @type {any} */ x) => x.name?.includes(name)); if (v) return v; }
+    return vs.find((/** @type {any} */ x) => /^en/i.test(x.lang)) || null;
   }
 
   /**
-   * ATC 語音（瀏覽器內建 TTS，zh-TW；零資產成本，配合 atcRadio squelch 念出指示）。
-   * @param {string} text
+   * ATC 語音（瀏覽器內建 TTS）：念英文（國際 ATC 本就英文；en 系統語音較自然）。
+   * @param {string} enText
    */
-  atcVoice(text) {
+  atcVoice(enText) {
     try {
       const synth = /** @type {any} */ (window).speechSynthesis;
-      if (!synth || !this.enabled) return;
-      const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{FE0F}]/gu, '').trim();
-      if (!clean) return;
+      if (!synth || !this.enabled || !enText) return;
       synth.cancel(); // 不排隊堆積（新指示打斷舊的）
-      const u = new SpeechSynthesisUtterance(clean);
-      u.lang = 'zh-TW'; u.rate = 1.15; u.pitch = 1.0; u.volume = 0.95; // 略快＝無線電感
+      const u = new SpeechSynthesisUtterance(enText);
+      u.lang = 'en-US';
+      const v = this._pickVoice();
+      if (v) u.voice = v;
+      u.rate = 1.02; u.pitch = 1.0; u.volume = 1.0;
       synth.speak(u);
     } catch { /* TTS 不可用：靜默（仍有 squelch + 文字） */ }
   }
