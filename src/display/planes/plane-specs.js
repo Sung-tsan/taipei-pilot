@@ -92,7 +92,7 @@ export const PLANE_SPECS = {
       // 比 ATR 更重：起飛速度更高、加減速更慢、轉彎更穩重。
       V_MIN: 38, V_GLIDE: 36, V_ROTATE: 55,
       V_MAX: 95, V_MAX_GEAR: 72,
-      GROUND_TOP: 50, GROUND_ACCEL: 7, GROUND_DRAG: 5, ACCEL: 6,
+      GROUND_TOP: 62, GROUND_ACCEL: 7, GROUND_DRAG: 5, ACCEL: 6, // GROUND_TOP 必須 > V_ROTATE 才起得來
       MAX_BANK: 0.8, BANK_RATE: 2.0, MAX_PITCH: 0.3, PITCH_RATE: 0.9, TURN_G: 14,
     },
     dims: { wingspan: 60, minRunwayLength: 1800 }, // 廣體：翼展 ~60m、最長跑道

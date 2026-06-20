@@ -21,6 +21,13 @@ describe('plane-specs 登記', () => {
     expect(planeSpec('does-not-exist')).toBe(PLANE_SPECS[DEFAULT_PLANE]);
   });
 
+  it('每架都起得來：GROUND_TOP >= V_ROTATE（滾行極速須達離地速，否則永遠起不來）', () => {
+    for (const id of PLANE_IDS) {
+      const p = flightParams(id);
+      expect(p.GROUND_TOP).toBeGreaterThanOrEqual(p.V_ROTATE); // 回歸守 A330 GROUND_TOP<V_ROTATE 的坑（接地判定用 >=）
+    }
+  });
+
   it('每個 spec 都有完整欄位（name/tone/dims/fuelSec/model）；voxel 機有 body/gear、GLB 機有 glb/lengthM', () => {
     for (const id of PLANE_IDS) {
       const s = planeSpec(id);
