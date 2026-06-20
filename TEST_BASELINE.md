@@ -3,13 +3,13 @@
 > 每個 handoff §0-PRE 要求「baseline 全綠才動工」。本檔記錄**當前綠燈基準**、**已修的坑**、以及
 > **已知非問題（假性紅燈）**——下次 session 照表對照即可，不用重新調查同一件事或重跑驗證。
 
-## 當前 baseline（最後更新 2026-06-20，含 V4 全部實作完成：v4.0-1~2 到場 + v4.1-1~2 離場/空中走廊/ATC；待 Sung HITL → tag `taipei-pilot-v4.0`）
+## 當前 baseline（最後更新 2026-06-20，**V4 完成 + Sung HITL 全過 → tag `taipei-pilot-v4.0`**；含 HITL 修：滑行轉彎/靠橋對齊/離場提示/ATC 英文語音/A330 機隊/相機縮放/A330 起飛）
 
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **359 passed**（33 files；V4 新增 taxiway/air-corridor/atc/context-keys depart） |
-| 整合 | `npm run e2e`（playwright） | **30 passed**（connect ×11 + flight ×19；離場流程/越界/空中走廊/到場全鏈/GLB 載入） |
+| 單元 | `npm test`（vitest） | **362 passed**（33 files；V4 + HITL：A330 spec、地面滑行轉彎、GROUND_TOP>=V_ROTATE 守） |
+| 整合 | `npm run e2e`（playwright） | **31 passed**（connect ×11 + flight ×20；+A330 機種、離場流程/空中走廊/到場全鏈/GLB 載入） |
 
 ### V3 HITL 五修（2026-06-15 Sung 實玩 v3 回報）
 1. **雙人 HUD 上排互疊看不到彈藥** → 分屏時武器/彈藥卡（ModeSlot）下移到第二排靠右 + 縮字（`index.html`）。

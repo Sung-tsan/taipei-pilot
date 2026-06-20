@@ -38,6 +38,8 @@
 >
 > **V4（民航與地面）全部實作完成（2026-06-16~20，Opus 開發 session）**（typecheck 0 / 359 unit / 30 e2e；DONE：`handoff/2026-06-18_v4.0-1~2_DONE.md` + `2026-06-20_v4.1-1~2_DONE.md`）：**v4.0-1** ATR-72 GLB+松山 taxiway+地面導航三合一+地面碰撞越界（+兩輪 HITL：ATR yaw/轉向、天氣鎖定、綠線起點）；**v4.0-2 到場** 落地→脫離道→塔台指派門→停妥靠橋（空橋伸出）；**v4.1-1 離場** spawn-at-gate→登機(地勤車)→pushback(拖車+遙控器確認鍵 BTN.CONFIRM)→taxi→起飛排序 hold-short→起飛；**空中走廊**（Sung 6/18 redirection）離場爬升→下風→進場下降 traffic pattern 穿越環；**v4.1-2** ATC 仿真 phraseology(DRAFT)+塔台無線電 squelch 音效。**flight 能量模型改寫**（重力耦合 dive>climb + 失速 stall，取代「永不失速」）。**一趟完整航班可飛：gate→天空→gate。** 4 機型 clean-belly 候選已 sourcing（`public/models/candidates/`）。**取捨（明示，非降級）：乘客=ATC 計數器(非走動小人)、起飛排序=計時 hold-short(可見「前面那架」環境機未做)、ATC=DRAFT 待校稿、真語音 clip/TTS 留 V5、民航機 unlock 暫可選(v1.2 未到)。** **待 Sung 雙真機 HITL 全項（flight 手感/離場/空中走廊/到場/ATC/完整航班 + 4 機型換入）+ ATC DRAFT 校稿 → 打 tag `taipei-pilot-v4.0`（agent 不代簽/不代打 tag）。** 之後＝V5（航線 A→B、離島短場×ATR×霧大魔王、台灣地圖）。
 >
+> **★ V4 Sung 雙真機 HITL 全過（2026-06-20）→ 打 tag `taipei-pilot-v4.0`（local）→ 進 V5。** HITL 修：①滑行轉彎半徑（GROUND_TURN_SPEED，ATR/A330 過得了彎）②靠橋對齊航廈（航廈/停機坪加寬、門貼近、橋縮短）③離場提示（ModeSlot 依階段 + 空中走廊任何 ATR 起飛即啟動）④ATC 改自然**英文語音**（瀏覽器 TTS，國際 ATC 本就英文；squelch 柔化，解「電磁音」）⑤**A330 機隊接線**（選單可選 + ATR 換 clean-belly GLB；F-16/T-34C 維持 voxel 保留旋槳/識別色）⑥追焦相機隨機體大小縮放（A330 鏡頭到機尾正後方）⑦A330 yaw=π + GROUND_TOP>V_ROTATE（起得來）。baseline 362 unit / 31 e2e。**仍待（非阻擋出貨）：ATC DRAFT 校稿、yaw/scale 微調、F-16/T-34 GLB 換入（候選已備）。**
+>
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**
 
 ---
