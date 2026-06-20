@@ -134,6 +134,8 @@ const PUSH_SEC = 3.2;       // pushback 推出時長
 const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
 const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY10，與 spawnPose 起飛朝向一致）
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
+/** 是否民航機（airliner tone）→ 走完整地面/空中走廊流程（ATR-72 / A330…）。 @param {string} id */
+const isCivil = (id) => planeSpec(id).tone === 'airliner';
 /** 空中走廊各 leg 的英文 ATC 語音（TTS；en ATC 較自然、國際本就英文）。 @type {Record<string,string>} */
 const CORRIDOR_VOICE = {
   climb: 'Climb on the departure.',
@@ -321,7 +323,7 @@ function refreshDrivers() {
     if (driven && !wasDriven[i]) {
       Object.assign(states[i], makePlane(spawnFor(i)));
       // v4.1-1：ATR（民航）spawn-at-gate → 啟動離場流程（登機→後推→taxi→排序→起飛）。
-      if (planeId === 'atr72' && (playMode === 'free' || playMode === 'mission')) startDeparture(i);
+      if (isCivil(planeId) && (playMode === 'free' || playMode === 'mission')) startDeparture(i);
       conseq[i] = makeConsequence(settings.mode, settings.heartsMax); // 新上線＝照當前設定重置後果狀態
       planes[i].setDamaged(false);
       if (playMode === 'mission') {
@@ -883,7 +885,7 @@ function setAtc(text, radio = false) {
 
 /** 該 slot 的出生姿態：ATR（民航）＝離場登機門（spawn-at-gate）；T-34C/F-16＝跑道頭（快起飛）。 @param {number} slot */
 function spawnFor(slot) {
-  if (planeId === 'atr72') {
+  if (isCivil(planeId)) {
     const g = taxi.nodes.get(DEPART_GATES[slot] ?? DEPART_GATES[0]);
     if (g) { const pose = gateParkPose(/** @type {any} */ (g), RUNWAY_DIR); return { x: pose.x, z: pose.z, heading: pose.heading }; }
   }
@@ -932,7 +934,7 @@ function clearCorridor() { corridorActive = false; corridorSlot = -1; corridorId
  * @param {number} now
  */
 function updateAirCorridor(now) {
-  if (!(corridorActive && planeId === 'atr72' && (playMode === 'free' || playMode === 'mission'))) {
+  if (!(corridorActive && isCivil(planeId) && (playMode === 'free' || playMode === 'mission'))) {
     if (corridorActive) clearCorridor();
     return;
   }
@@ -985,7 +987,7 @@ function checkTaxiOff(/** @type {number} */ slot, /** @type {{x:number,z:number}
  * @param {number} now
  */
 function updateGroundNav(now) {
-  if (!(planeId === 'atr72' && (playMode === 'free' || playMode === 'mission'))) {
+  if (!(isCivil(planeId) && (playMode === 'free' || playMode === 'mission'))) {
     if (groundNav.active) groundNav.clear();
     if (departPhase !== 'none') clearDeparture();
     arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null; setAtc('');
@@ -1178,12 +1180,12 @@ function loop(/** @type {number} */ now) {
       if (states[i].justTookOff) {
         toast(i, '起飛！✈️');
         // 任何 ATR 起飛都接空中走廊（不限走完地面離場流程）→ 確保空中指引一定出現（HITL 2026-06-20）。
-        if (planeId === 'atr72') { clearDeparture(); startDepartCorridor(i); }
+        if (isCivil(planeId)) { clearDeparture(); startDepartCorridor(i); }
       }
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
         // v4.0-2 到場流程啟動：民航機落地 → 塔台指派 gate（P2）+ 進「脫離跑道」階段（P1）。
-        if (planeId === 'atr72') {
+        if (isCivil(planeId)) {
           clearDeparture(); clearCorridor(); // 落地＝到場：清離場/空中走廊（避免殘留擋住到場流程）
           const fwd = { x: Math.sin(states[i].heading), z: -Math.cos(states[i].heading) };
           arrivalExit = selectArrivalExit(taxi, states[i].pos, fwd, RUNWAY_DIR);

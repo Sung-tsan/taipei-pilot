@@ -79,8 +79,26 @@ export const PLANE_SPECS = {
     },
     dims: { wingspan: 27, minRunwayLength: 1200 }, // 真實翼展 ~27m、需長跑道（迫降諸元）
     fuelSec: 1500, // 民航航程長
-    model: { glb: '/models/airliner.glb', lengthM: 27, yaw: Math.PI }, // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-16）
+    // clean-belly low-poly GLB（無支柱，解 (b) 起落架問題）；yaw 待 Sung 真機目視校正。
+    model: { glb: '/models/atr72.glb', lengthM: 27, yaw: 0 },
     unlock: { flightMin: 30, landings: 10 }, // v1.2 解鎖：民航機進階門檻
+  },
+  // A330 廣體客機 —— tone ladder 最仿真端（大、最重、最慢轉、最長跑道）。clean-belly low-poly GLB。
+  a330: {
+    id: 'a330',
+    name: '🛫 A330',
+    tone: 'airliner',
+    flight: {
+      // 比 ATR 更重：起飛速度更高、加減速更慢、轉彎更穩重。
+      V_MIN: 38, V_GLIDE: 36, V_ROTATE: 55,
+      V_MAX: 95, V_MAX_GEAR: 72,
+      GROUND_TOP: 50, GROUND_ACCEL: 7, GROUND_DRAG: 5, ACCEL: 6,
+      MAX_BANK: 0.8, BANK_RATE: 2.0, MAX_PITCH: 0.3, PITCH_RATE: 0.9, TURN_G: 14,
+    },
+    dims: { wingspan: 60, minRunwayLength: 1800 }, // 廣體：翼展 ~60m、最長跑道
+    fuelSec: 3000, // 廣體長程
+    model: { glb: '/models/a330.glb', lengthM: 50, yaw: 0 }, // yaw/scale 待 Sung 真機校正
+    unlock: { flightMin: 60, landings: 20 }, // v1.2 解鎖：廣體最高門檻
   },
 };
 
@@ -88,7 +106,7 @@ export const PLANE_SPECS = {
 export const DEFAULT_PLANE = 't34c';
 
 /** 機種清單（給選單/測試列舉，順序＝ tone ladder） */
-export const PLANE_IDS = /** @type {const} */ (['t34c', 'f16', 'atr72']);
+export const PLANE_IDS = /** @type {const} */ (['t34c', 'f16', 'atr72', 'a330']);
 
 /** @param {string} id @returns {PlaneSpec} 未知 id → 退回預設機（不爆） */
 export function planeSpec(id) {

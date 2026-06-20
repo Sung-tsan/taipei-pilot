@@ -54,10 +54,20 @@ describe('plane-specs 登記', () => {
     expect(s.dims.wingspan).toBeGreaterThan(planeSpec('f16').dims.wingspan);
   });
 
-  it('tone ladder：T-34C=cartoon、F-16=combat、ATR-72=airliner', () => {
+  it('A330＝GLB 廣體客機（airliner tone、比 ATR 更重：更長跑道、更寬翼展、更多油）', () => {
+    const a = planeSpec('a330'); const atr = planeSpec('atr72');
+    expect(a.tone).toBe('airliner');
+    expect(isGlbModel(a.model)).toBe(true);
+    expect(a.dims.minRunwayLength).toBeGreaterThan(atr.dims.minRunwayLength);
+    expect(a.dims.wingspan).toBeGreaterThan(atr.dims.wingspan);
+    expect(a.fuelSec).toBeGreaterThan(atr.fuelSec);
+  });
+
+  it('tone ladder：T-34C=cartoon、F-16=combat、ATR-72/A330=airliner', () => {
     expect(planeSpec('t34c').tone).toBe('cartoon');
     expect(planeSpec('f16').tone).toBe('combat');
     expect(planeSpec('atr72').tone).toBe('airliner');
+    expect(planeSpec('a330').tone).toBe('airliner');
   });
 });
 

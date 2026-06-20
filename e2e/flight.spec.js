@@ -181,6 +181,44 @@ test('機種 ATR-72：CC0/CC-BY GLB 機體載入 → 起飛、HUD 顯示 ATR-72'
   await ctx.close();
 });
 
+// v4 機隊：A330（廣體客機）可選 → GLB 機體載入 → HUD 顯示 A330（與 ATR 同走民航地面/空中流程）。
+test('機種 A330：選單可選 → CC-BY GLB 載入 → HUD 顯示 A330', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  const errors = /** @type {string[]} */ ([]);
+  display.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="a330"]'); // 新選項
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.planeId)).toBe('a330');
+  await display.click('#modeMenuClose');
+
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.planeGlbLoaded[0]),
+    { timeout: 30000 },
+  ).toBe(true); // GLB 機體過 normalize 管線載入
+
+  // A330（民航）spawn-at-gate；teleport 到跑道頭起飛 → 飛行中 HUD ModeSlot 顯示機名。
+  await display.keyboard.press('KeyG');
+  await display.evaluate(() => {
+    const tp = /** @type {any} */ (window).__tp;
+    const h = (100 * Math.PI) / 180; const dir = { x: Math.sin(h), z: -Math.cos(h) };
+    const s = tp.states[0]; const back = -1100;
+    s.pos.x = dir.x * back; s.pos.z = dir.z * back; s.pos.y = 0; s.heading = h; s.mode = 'rolling'; s.speed = 0;
+  });
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+  await expect(display.locator('#hud-0 .mode-slot')).toContainText('A330');
+  expect(errors.filter((e) => /glb|gltf|a330|model/i.test(e))).toEqual([]);
+  await ctx.close();
+});
+
 // v4.0-1 P3：ATR-72 在地面 → 地面導航三合一（跟我車/綠中線燈/ATC 文字）引導到登機門。
 test('離場地面流程：ATR spawn-at-gate → 登機→後推→taxi 導航 + ATC', async ({ browser }) => {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true });

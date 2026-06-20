@@ -5,17 +5,21 @@
 
 | 檔案 | 用途 | 來源 | 授權 | 需標示 |
 |------|------|------|------|--------|
-| `airliner.glb` | ATR-72（通用低面數客機**替代**，V4 民航機） | Poly Pizza `/m/8ciDd9k8wha`（原 Poly by Google，~1292 tris） | **CC-BY 3.0** | **是** |
-| `follow-me.glb` | 地面導航「跟我車」 | Kenney Car Kit 3.1（`sedan`） | **CC0 1.0** | 否（仍致謝） |
+| `a330.glb` | A330（廣體客機，clean-belly） | Poly Pizza [`/m/fzIXe2paBN9`](https://poly.pizza/m/fzIXe2paBN9)（"Airplane" Boeing 787，Poly by Google，~1100 tris） | **CC-BY 3.0** | **是** |
+| `atr72.glb` | ATR-72（民航機，clean-belly） | Poly Pizza [`/m/1uXmHq-ELhz`](https://poly.pizza/m/1uXmHq-ELhz)（"Small plane"，Poly by Google，~254 tris） | **CC-BY 3.0** | **是** |
+| `follow-me.glb` | 地面導航「跟我車」/ 地勤車 / pushback 拖車 | Kenney Car Kit 3.1（`sedan`） | **CC0 1.0** | 否（仍致謝） |
 | `Textures/colormap.png` | 上面 Kenney 車的色票（GLB 相對外參，須一起 ship） | Kenney Car Kit 3.1 | **CC0 1.0** | 否 |
+| `airliner.glb` | （**已停用**，原 ATR-72 代用；支柱烤進機身、飛行露輪 → 換成 `atr72.glb`） | Poly Pizza `/m/8ciDd9k8wha` | CC-BY 3.0 | — |
+
+> 候選清單（含 ATR 螺旋槳版、F-16、T-34 GLB）見 `candidates/CANDIDATES.md`；目前 F-16/T-34C 維持手刻 voxel（保留旋槳動畫 + 雙人識別色）。
 
 ## ⚠️ 授權注意（待 Sung 拍板）
-- **`airliner.glb` 為 CC-BY 3.0，需標示**（"Airplane" by Poly by Google，CC-BY 3.0）。
-  - 線上 CC0 來源（Poly Pizza / Quaternius）**查無客運客機**：客機幾乎都是 Google Poly 的 CC-BY；
-    CC0 飛行物只有太空船/直升機/飛船（不合用）。故 V4 暫用 CC-BY 客機 + 標示。
-  - **出貨前若要維持純 CC0**：丟一個 CC0 客機 GLB 進 `public/models/airliner.glb` 即一行替換（管線不變）。
-- ATR-72 是雙螺旋槳支線客機；本替代件為噴射客機外型——**外型代用、玩法(滑行/靠橋/地面作業)不受影響**。
+- **`a330.glb` / `atr72.glb` 皆 CC-BY 3.0，需標示**（見下致謝）。線上查無 CC0 客機（Poly Pizza/Quaternius 客機幾乎全是 Google Poly 的 CC-BY）。
+- 兩件皆 **clean-belly（無外露支柱）**，解掉舊 `airliner.glb` 飛行露輪問題（Sung (b) 需求）。
+- yaw/scale（機鼻朝向、大小）待 Sung 真機目視校正（plane-specs `a330.model.yaw` / `atr72.model.yaw`）。
+- A330＝Boeing 787 外型代用、ATR-72＝小型客機外型代用——**外型代用、玩法不受影響**。
 
 ## 致謝
-- "Airplane" — Poly by Google，CC-BY 3.0（https://poly.pizza/m/8ciDd9k8wha）。
+- "Airplane"（Boeing 787）— Poly by Google，CC-BY 3.0（https://poly.pizza/m/fzIXe2paBN9）。
+- "Small plane" — Poly by Google，CC-BY 3.0（https://poly.pizza/m/1uXmHq-ELhz）。
 - Kenney（kenney.nl）Car Kit — CC0 1.0。
