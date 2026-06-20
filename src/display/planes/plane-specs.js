@@ -97,7 +97,7 @@ export const PLANE_SPECS = {
     },
     dims: { wingspan: 60, minRunwayLength: 1800 }, // 廣體：翼展 ~60m、最長跑道
     fuelSec: 3000, // 廣體長程
-    model: { glb: '/models/a330.glb', lengthM: 50, yaw: 0 }, // yaw/scale 待 Sung 真機校正
+    model: { glb: '/models/a330.glb', lengthM: 50, yaw: Math.PI }, // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-20）
     unlock: { flightMin: 60, landings: 20 }, // v1.2 解鎖：廣體最高門檻
   },
 };
