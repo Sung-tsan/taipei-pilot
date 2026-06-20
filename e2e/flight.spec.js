@@ -661,3 +661,84 @@ test('左上 StatusSlot 不與 #topBtns 控制列重疊（overlap regression）'
   await display.keyboard.up('Space');
   await ctx.close();
 });
+
+// v5.0-1：台灣全圖選線 → 起飛 → 雲上巡航 → 機場切換到目的地降落。
+test('V5 航線：松山→高雄 全圖選線 → 起飛巡航 → 切換到高雄機場', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  const errors = /** @type {string[]} */ ([]);
+  display.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  // 起點＝松山；選航線到高雄（demo 機場）
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.curAirport)).toBe('tsa');
+  const ok = await display.evaluate(() => /** @type {any} */ (window).__tp.selectRoute('khh'));
+  expect(ok).toBe(true);
+
+  // 鍵盤起飛 → justTookOff 觸發巡航
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect.poll(
+    () => display.evaluate(() => !!/** @type {any} */ (window).__tp.cruise),
+    { timeout: 6000 },
+  ).toBe(true);
+  await display.keyboard.up('Space');
+
+  // 快轉巡航抵達 → load 高雄 airspace + 飛機放最終進場
+  await display.evaluate(() => /** @type {any} */ (window).__tp.arriveNow());
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.curAirport)).toBe('khh');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.airportName)).toContain('高雄');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.lastRouteFlown)).toBe('tsa-khh');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode)).toBe('flying');
+
+  expect(errors, errors.join('\n')).toEqual([]); // 切換機場無 console error
+  await ctx.close();
+});
+
+// v5.0-1：航線圖 UI（台灣全圖＝地理教材；九機場可見、demo 可選）。
+test('V5 航線圖：開圖 → 九機場可見 → 選高雄 → 出發鈕啟用', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#routeMapBtn');
+  await expect(display.locator('#routeMap')).toBeVisible();
+  await expect(display.locator('#routeMapSvg text')).toHaveCount(9); // 九機場名牌（地理教材）
+  await expect(display.locator('#routeDepartBtn')).toBeDisabled();
+  await display.locator('#routeMapSvg [data-dest="khh"]').last().click(); // 透明大命中區在最上層
+  await expect(display.locator('#routeDepartBtn')).toBeEnabled();
+  await expect(display.locator('#routeList')).toContainText('高雄');
+  await display.click('#routeDepartBtn');
+  await expect(display.locator('#routeMap')).toBeHidden();
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.selectedDest)).toBe('khh');
+  await ctx.close();
+});
+
+// v5.0-1：金門（霧招牌離島）也能飛抵 + 切換（demo 第三場）。
+test('V5 航線：松山→金門 切換到離島機場（霧招牌）', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.evaluate(() => /** @type {any} */ (window).__tp.selectRoute('knh'));
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await expect.poll(
+    () => display.evaluate(() => !!/** @type {any} */ (window).__tp.cruise),
+    { timeout: 6000 },
+  ).toBe(true);
+  await display.keyboard.up('Space');
+  await display.evaluate(() => /** @type {any} */ (window).__tp.arriveNow());
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.curAirport)).toBe('knh');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.airportName)).toContain('金門');
+  await ctx.close();
+});

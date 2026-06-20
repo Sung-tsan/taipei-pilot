@@ -19,41 +19,51 @@
  * @typedef {{ nodes: Map<string, TaxiNode>, edges:[string,string][], adj: Map<string, string[]> }} TaxiGraph
  */
 
-const HALF = 2605 / 2;        // 跑道半長（與 airport.js RUNWAY.length 同值）
+export const DEFAULT_RUNWAY_LENGTH = 2605; // 松山跑道全長（與 airport.js RUNWAY.length 同值）
 const PAR_LAT = -90;          // 平行滑行道側距（跑道中線南側）
 const HOLD_LAT = -45;         // 等待點（跑道邊與平行道之間）
 const APRON_LAT = -200;       // 停機坪滑行線
 const GATE_LAT = -290;        // 登機門停機位（貼近航廈；HITL 2026-06-20：原 -250 離航廈太遠、空橋接不到）
 
-/** 松山滑行道節點表（along, lateral 公尺）。代號待 AIP 微調。 */
-const NODE_DEFS = /** @type {TaxiNode[]} */ ([
-  // 跑道中線：兩端門檻 + 三個快速脫離接點
-  { id: 'r10', kind: 'runway', along: -HALF + 50, lateral: 0, label: 'RWY10 頭' },
-  { id: 'x1', kind: 'exit', along: -650, lateral: 0, label: '脫離道 A' },
-  { id: 'x2', kind: 'exit', along: 0, lateral: 0, label: '脫離道 B' },
-  { id: 'x3', kind: 'exit', along: 650, lateral: 0, label: '脫離道 C' },
-  { id: 'r28', kind: 'runway', along: HALF - 50, lateral: 0, label: 'RWY28 頭' },
-  // 等待點（進跑道前 hold short）
-  { id: 'h10', kind: 'hold', along: -HALF + 70, lateral: HOLD_LAT, label: 'RWY10 等待點' },
-  { id: 'h28', kind: 'hold', along: HALF - 70, lateral: HOLD_LAT, label: 'RWY28 等待點' },
-  // 平行滑行道（南側全長）
-  { id: 'pA', kind: 'parallel', along: -HALF + 70, lateral: PAR_LAT },
-  { id: 'pB', kind: 'parallel', along: -650, lateral: PAR_LAT },
-  { id: 'pC', kind: 'parallel', along: 0, lateral: PAR_LAT },
-  { id: 'pD', kind: 'parallel', along: 650, lateral: PAR_LAT },
-  { id: 'pE', kind: 'parallel', along: HALF - 70, lateral: PAR_LAT },
-  // 停機坪滑行線（三接點）
-  { id: 'aW', kind: 'apron', along: -300, lateral: APRON_LAT },
-  { id: 'aM', kind: 'apron', along: 0, lateral: APRON_LAT },
-  { id: 'aE', kind: 'apron', along: 300, lateral: APRON_LAT },
-  // 6 個登機門
-  { id: 'g1', kind: 'gate', along: -250, lateral: GATE_LAT, label: '1 號門' },
-  { id: 'g2', kind: 'gate', along: -150, lateral: GATE_LAT, label: '2 號門' },
-  { id: 'g3', kind: 'gate', along: -50, lateral: GATE_LAT, label: '3 號門' },
-  { id: 'g4', kind: 'gate', along: 50, lateral: GATE_LAT, label: '4 號門' },
-  { id: 'g5', kind: 'gate', along: 150, lateral: GATE_LAT, label: '5 號門' },
-  { id: 'g6', kind: 'gate', along: 250, lateral: GATE_LAT, label: '6 號門' },
-]);
+/**
+ * 機場滑行道節點表（along 依跑道長等比、lateral 固定）。松山＝預設 2605；V5 他場傳各自跑道長。
+ * 結構不變（同 id／kind／連通）＝引擎/到場/離場流程零改動，只是按跑道縮放（B1）。
+ * @param {number} runwayLength @returns {TaxiNode[]}
+ */
+function nodeDefs(runwayLength) {
+  const HALF = runwayLength / 2;
+  const q = HALF * 0.5;        // 快速脫離道在四分點（跑道越短越靠中）
+  const aSpread = HALF * 0.23; // 停機坪三接點間距
+  const gStep = HALF * 0.077;  // 登機門間距（松山 ≈100m，他場等比）
+  return /** @type {TaxiNode[]} */ ([
+    // 跑道中線：兩端門檻 + 三個快速脫離接點
+    { id: 'r10', kind: 'runway', along: -HALF + 50, lateral: 0, label: 'RWY10 頭' },
+    { id: 'x1', kind: 'exit', along: -q, lateral: 0, label: '脫離道 A' },
+    { id: 'x2', kind: 'exit', along: 0, lateral: 0, label: '脫離道 B' },
+    { id: 'x3', kind: 'exit', along: q, lateral: 0, label: '脫離道 C' },
+    { id: 'r28', kind: 'runway', along: HALF - 50, lateral: 0, label: 'RWY28 頭' },
+    // 等待點（進跑道前 hold short）
+    { id: 'h10', kind: 'hold', along: -HALF + 70, lateral: HOLD_LAT, label: 'RWY10 等待點' },
+    { id: 'h28', kind: 'hold', along: HALF - 70, lateral: HOLD_LAT, label: 'RWY28 等待點' },
+    // 平行滑行道（南側全長）
+    { id: 'pA', kind: 'parallel', along: -HALF + 70, lateral: PAR_LAT },
+    { id: 'pB', kind: 'parallel', along: -q, lateral: PAR_LAT },
+    { id: 'pC', kind: 'parallel', along: 0, lateral: PAR_LAT },
+    { id: 'pD', kind: 'parallel', along: q, lateral: PAR_LAT },
+    { id: 'pE', kind: 'parallel', along: HALF - 70, lateral: PAR_LAT },
+    // 停機坪滑行線（三接點）
+    { id: 'aW', kind: 'apron', along: -aSpread, lateral: APRON_LAT },
+    { id: 'aM', kind: 'apron', along: 0, lateral: APRON_LAT },
+    { id: 'aE', kind: 'apron', along: aSpread, lateral: APRON_LAT },
+    // 6 個登機門
+    { id: 'g1', kind: 'gate', along: -2.5 * gStep, lateral: GATE_LAT, label: '1 號門' },
+    { id: 'g2', kind: 'gate', along: -1.5 * gStep, lateral: GATE_LAT, label: '2 號門' },
+    { id: 'g3', kind: 'gate', along: -0.5 * gStep, lateral: GATE_LAT, label: '3 號門' },
+    { id: 'g4', kind: 'gate', along: 0.5 * gStep, lateral: GATE_LAT, label: '4 號門' },
+    { id: 'g5', kind: 'gate', along: 1.5 * gStep, lateral: GATE_LAT, label: '5 號門' },
+    { id: 'g6', kind: 'gate', along: 2.5 * gStep, lateral: GATE_LAT, label: '6 號門' },
+  ]);
+}
 
 /** 無向邊（滑行道連通）。 @type {[string,string][]} */
 const EDGE_DEFS = [
@@ -74,13 +84,14 @@ const EDGE_DEFS = [
 ];
 
 /**
- * 建松山滑行道 graph（節點 Map + 邊 + 鄰接表）。每次回新物件（呼叫端可安全改）。
+ * 建滑行道 graph（節點 Map + 邊 + 鄰接表）。每次回新物件（呼叫端可安全改）。
+ * @param {number} [runwayLength] 跑道全長（m）；缺省＝松山 2605。V5 他場傳各自跑道長 → 等比縮放。
  * @returns {TaxiGraph}
  */
-export function makeTaxiwayGraph() {
+export function makeTaxiwayGraph(runwayLength = DEFAULT_RUNWAY_LENGTH) {
   /** @type {Map<string, TaxiNode>} */
   const nodes = new Map();
-  for (const n of NODE_DEFS) nodes.set(n.id, { ...n });
+  for (const n of nodeDefs(runwayLength)) nodes.set(n.id, { ...n });
   /** @type {Map<string, string[]>} */
   const adj = new Map();
   for (const id of nodes.keys()) adj.set(id, []);

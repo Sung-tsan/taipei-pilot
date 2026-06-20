@@ -46,6 +46,7 @@ export function weatherForces(type) {
 export const WEATHER_PROFILES = {
   tsa: { name: '松山', draft: false, probs: { clear: 0.50, cloudy: 0.28, rain: 0.14, fog: 0.08 } },
   // —— 以下 V5 航網啟用、數值 DRAFT（schema 完整、待實地調校）——
+  tpe: { name: '桃園', draft: true, probs: { clear: 0.52, cloudy: 0.28, rain: 0.16, fog: 0.04 } },
   rmq: { name: '台中', draft: true, probs: { clear: 0.55, cloudy: 0.25, rain: 0.15, fog: 0.05 } },
   khh: { name: '高雄', draft: true, probs: { clear: 0.60, cloudy: 0.22, rain: 0.15, fog: 0.03 } },
   hun: { name: '花蓮', draft: true, probs: { clear: 0.45, cloudy: 0.30, rain: 0.20, fog: 0.05 } },

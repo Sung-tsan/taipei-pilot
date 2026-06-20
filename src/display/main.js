@@ -10,12 +10,13 @@ import { makeWeather, rollWeather, weatherProfile, weatherForces, DEFAULT_AIRPOR
 import { makeDayNight, dayNightParams, TIMES_OF_DAY } from './weather/daynight.js';
 import { crosswindDamagePct, turbulenceDamagePct } from './flight/wind-damage.js';
 import { AirportLife } from './scene/airport-life.js';
-import { spawnPose, RUNWAY_DIR } from './scene/airport.js';
 import { patternPoints, advanceCorridor, corridorAtc } from './scene/air-corridor.js';
 import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort, atcCleared, atcExit, atcTaxiToGate, atcDocked } from './scene/atc-phraseology.js';
 import { CorridorMarkers } from './scene/corridor-markers.js';
 import { GroundService } from './scene/ground-service.js';
-import { makeTaipei } from './scene/taipei.js';
+import { makeAirportScene } from './scene/airport-scene.js';
+import { AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, DEMO_AIRPORTS, routesFrom, routeOtherEnd, routeDistanceKm, airport as airportSpec, mapXY } from './scene/airports.js';
+import { makeCruise, stepCruise, cruisePhaseLabel, cruiseEtaSec } from './missions/route-engine.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
@@ -24,7 +25,7 @@ import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
 import { GroundNav } from './scene/ground-nav.js';
-import { makeTaxiwayGraph, nearestNode, arrivalRoute, routeWorldPoints, nodeWorld, selectArrivalExit, exitParallel, assignArrivalGate, isParkedAtGate, gateParkPose, departureRoute } from './scene/taxiway.js';
+import { nearestNode, arrivalRoute, routeWorldPoints, nodeWorld, selectArrivalExit, exitParallel, assignArrivalGate, isParkedAtGate, gateParkPose, departureRoute } from './scene/taxiway.js';
 import { planesColliding } from './flight/plane-collision.js';
 import { Minimap } from './ui/minimap.js';
 import { ChaseCam } from './render/chase-cam.js';
@@ -50,18 +51,31 @@ import { wrapAngle } from '../lib/math.js';
 /** @param {string} id */
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 
-// —— 場景 ——
+// —— 場景（V5：多機場航網。每機場一顆 group，切換＝remove/add；以各自跑道中心為世界原點）——
 const scene = makeWorld();
-const taipei = makeTaipei();
-scene.add(taipei.group);
-const labels = new LandmarkLabels(taipei.group, taipei.landmarks);
-const env = taipei.env;
+/** @type {Map<string, import('./scene/airport-scene.js').AirportScene>} 已建機場場景（切換不重建） */
+const airportCache = new Map();
+/** @type {Map<string, LandmarkLabels>} 各機場地標名牌（建一次、隨場景重用，避免重複 sprite） */
+const labelCache = new Map();
+/** 取得（首次則建並快取）一個機場的場景 + 名牌。 @param {string} id */
+function getAirport(id) {
+  let a = airportCache.get(id);
+  if (!a) { a = makeAirportScene(id); airportCache.set(id, a); labelCache.set(id, new LandmarkLabels(a.group, a.landmarks)); }
+  return a;
+}
+let curAirportId = HOME_AIRPORT;     // 目前所在機場（航網切換）
+let air = getAirport(curAirportId);  // 目前機場場景（terrainAt/solidAt/env/runwayDir/taxi/spawnPose）
+scene.add(air.group);
+let labels = /** @type {LandmarkLabels} */ (labelCache.get(curAirportId));
+let env = air.env;          // 目前機場 env（切換時重指）
+let taxi = air.taxi;        // 目前機場滑行道 graph
+let RWDIR = air.runwayDir;  // 目前機場跑道方向（取代 V4 全域 RWDIR）
 
 // —— 實體與相機（每 slot 一組，常駐） ——
 const vr = new ViewportRenderer(/** @type {HTMLCanvasElement} */ ($('gameCanvas')));
 const planes = Array.from({ length: MAX_SLOTS }, (_, i) => new PlaneEntity(scene, i));
 const cams = Array.from({ length: MAX_SLOTS }, () => new ChaseCam());
-const states = Array.from({ length: MAX_SLOTS }, (_, i) => makePlane(spawnPose(i)));
+const states = Array.from({ length: MAX_SLOTS }, (_, i) => makePlane(air.spawnPose(i)));
 
 // —— 後果軸（安全模式）：每架一份狀態，per session 從 localStorage 載 ——
 const settings = loadSettings();
@@ -70,7 +84,7 @@ const conseq = Array.from({ length: MAX_SLOTS }, () => makeConsequence(settings.
 const lastForcedLanding = Array.from({ length: MAX_SLOTS }, () => null);
 
 // —— 任務系統（v1.1-4）：解析器 + runner + 收集 + 玩法模式 ——
-const lmById = new Map(taipei.landmarks.map((l) => [l.id, l]));
+const lmById = new Map(air.landmarks.map((l) => [l.id, l]));
 const lmFact = new Map(airspaceTaipei.landmarks.map((l) => [l.id, l.fact.text]));
 const lmSize = new Map(airspaceTaipei.landmarks.map((l) => [l.id, l.size]));
 const landmarkIds = airspaceTaipei.landmarks.map((l) => l.id);
@@ -97,15 +111,14 @@ let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 
 // —— 空戰（v2.0-2）：氣球靶 + 武器 + 對地紅區 ——
 // 地標豁免區（红線：空對地命中 7 教育地標無效）；demo 紅區放開闊處（場景化紅區由 v2.0-4 進 airspace）。
-const landmarkZones = taipei.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @type {any} */ (l).clear ?? 200) + 80 }));
+const landmarkZones = air.landmarks.map((l) => ({ x: l.x, z: l.z, r: (/** @type {any} */ (l).clear ?? 200) + 80 }));
 const DEMO_REDZONE = { x: 2600, z: 2600, r: 450 };
 const dogfight = new Dogfight(scene, { landmarks: landmarkZones, redZones: [DEMO_REDZONE], groundY: env.groundY, env });
 const prevSwitchBit = states.map(() => false); // 換武器鍵上升緣偵測（per slot）
 const prevDodgeBit = states.map(() => false);  // 翻滾閃避鍵上升緣偵測（per slot）
 const dodges = states.map(() => makeDodge());  // 翻滾閃避狀態機（per slot）
 
-// —— V4 地面導航（v4.0-1 P3）：松山 taxiway graph + 跟我車(GLB)/綠中線燈/ATC 文字 ——
-const taxi = makeTaxiwayGraph();
+// —— V4 地面導航（v4.0-1 P3）：taxiway graph（目前機場，見上 `taxi`）+ 跟我車(GLB)/綠中線燈/ATC 文字 ——
 const groundNav = new GroundNav(scene);
 let gnGate = /** @type {string|null} */ (null); // 目前導航目標登機門（活化時定一次）
 // v4.0-2 到場流程狀態機：'none'＝非到場（沿用 v4.0-1 直接導到 gate）；
@@ -189,7 +202,7 @@ function rollAndApplyWeather() {
   // 天氣偏好：家長手動鎖定（晴/多雲/雨/霧）優先；'auto' 才照後果模式 roll（HITL 2026-06-16：雨要能關）。
   ambientWeather = settings.weather && settings.weather !== 'auto'
     ? settings.weather
-    : rollWeather(weatherProfile(DEFAULT_AIRPORT), settings.mode);
+    : rollWeather(weatherProfile(air.spec.weather), settings.mode);
   weather.type = ambientWeather;
   missionForcedWeather = null;
   applyEnv();
@@ -259,7 +272,7 @@ const RACE_RING_Y = 250, RACE_RING_R = 95;
 function buildRaceCourse(type) {
   const start = { x: 0, z: 0, y: 80 };
   if (type === 'landmark') {
-    const lm = lmById.get('taipei101') ?? taipei.landmarks[0]; // 地標衝刺：飛到 101（或第一個地標）
+    const lm = lmById.get('taipei101') ?? air.landmarks[0]; // 地標衝刺：飛到 101（或第一個地標）
     const target = { x: lm.x, z: lm.z, r: 140 };
     raceWaypoints = [{ x: lm.x, z: lm.z }];
     return { race: makeRace(RACE_TYPES.LANDMARK, [0, 1], { target }), waypoints: [{ x: lm.x, z: lm.z, y: RACE_RING_Y, r: 140 }], start };
@@ -543,6 +556,173 @@ function toast(slot, text) {
   hud.toast(slot, text); // CenterSlot 瞬時 overlay
 }
 
+// ============================================================================
+// V5 航網：台灣全圖選線 + 雲上巡航（時間壓縮 + 半自動）+ 機場切換（load/unload）
+// 北極星 ROADMAP §4 V5 / handoff v5.0-1。demo 機場（v5.0-1 可飛）＝松山/高雄/金門；其餘 v5.1-2 解鎖。
+// ============================================================================
+/** @type {import('./scene/airports.js').Route|null} */ let selectedRoute = null; // 全圖選定航線
+let selectedDest = /** @type {string|null} */ (null); // 選定目的地機場（航線另一端）
+/** @type {import('./missions/route-engine.js').Cruise|null} */ let cruise = null;  // 進行中的巡航
+let cruiseSlot = -1;          // 飛航線的 slot（航線飛行＝單機主導）
+let cruiseDest = /** @type {string|null} */ (null);   // 巡航目的地機場 id
+let cruiseRouteId = /** @type {string|null} */ (null); // 巡航航線 id（v5.0-2 收集點亮用）
+let lastRouteFlown = /** @type {string|null} */ (null); // 最近完成的航線 id（e2e/收集 hook）
+
+/** 某機場是否本階段可飛（v5.0-1 demo 三場；v5.1-2 解鎖全部）。 @param {string} id */
+const airportUnlocked = (id) => DEMO_AIRPORTS.includes(/** @type {any} */ (id));
+
+/**
+ * 切換目前機場（航網 load/unload）：remove 舊 group、add 新場景、重指 env/taxi/runwayDir、
+ * 清地面/空中流程狀態、換目的地天氣 profile。各機場以自己跑道中心為世界原點。
+ * @param {string} toId
+ */
+function loadAirport(toId) {
+  if (toId === curAirportId) return;
+  scene.remove(air.group);
+  curAirportId = toId;
+  air = getAirport(toId);
+  scene.add(air.group);
+  labels = /** @type {LandmarkLabels} */ (labelCache.get(toId));
+  env = air.env; taxi = air.taxi; RWDIR = air.runwayDir;
+  clearDeparture(); clearCorridor();
+  arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
+  rollAndApplyWeather(); // 目的地機場天氣 profile（金門霧/澎湖側風…招牌活化）
+}
+
+/** 武裝巡航：起飛後若有選定航線即由 justTookOff 呼叫。 @param {number} slot */
+function beginCruise(slot) {
+  if (!selectedRoute || !selectedDest) return;
+  cruise = makeCruise(selectedRoute, routeDistanceKm(curAirportId, selectedDest));
+  cruiseSlot = slot; cruiseDest = selectedDest; cruiseRouteId = selectedRoute.id;
+  clearDeparture(); clearCorridor();
+  toast(slot, `🛫 飛往 ${airportSpec(selectedDest).name}！爬升到雲端開始巡航`);
+}
+
+/** 把飛機放到目的地跑道「最終進場」（airborne、對正、放輪、進場速度）。 @param {number} slot */
+function placeOnApproach(slot) {
+  const dir = air.runwayDir; const L = air.runwayLength;
+  const back = -L / 2 - 2200; // 跑道頭外 2.2km
+  const heading = Math.atan2(dir.x, -dir.z);
+  Object.assign(states[slot], makePlane({ x: dir.x * back, z: dir.z * back, heading }));
+  states[slot].mode = 'flying'; states[slot].pos.y = 360; states[slot].speed = 70; states[slot].gearDown = true;
+  planes[slot].setDamaged(false);
+}
+
+/** 巡航抵達：load 目的地 airspace + 飛機放到最終進場 + 收尾。 */
+function arriveCruise() {
+  if (!cruise || !cruiseDest) return;
+  const slot = cruiseSlot;
+  loadAirport(cruiseDest);
+  placeOnApproach(slot);
+  toast(slot, `☁️ 抵達 ${air.spec.name} 上空，對正跑道降落！`);
+  audio.landingChime();
+  lastRouteFlown = cruiseRouteId;
+  cruise = null; cruiseSlot = -1; cruiseDest = null; cruiseRouteId = null;
+  selectedRoute = null; selectedDest = null;
+  cruiseOverlayEl.classList.remove('show');
+}
+
+/**
+ * 巡航每物理步（cruiseSlot 專用）：climb 段照常飛（玩家爬升、偵測進雲）；cruise 段半自動快轉。
+ * @param {number} i @param {import('./flight/flight-model.js').Input} input @returns {boolean} 是否已自處理（true → 略過一般物理）
+ */
+function updateCruiseStep(i, input) {
+  if (!cruise) return false;
+  const cs = stepCruise(cruise, { dt: DT, alt: states[i].pos.y, headingAdjust: input.r ?? 0 });
+  if (cs.justEnteredCruise) { cruiseOverlayEl.classList.add('show'); toast(i, '☁️ 進入雲上巡航（自動快轉）'); audio.atcVoice('Climbing to cruise altitude. Enjoy the flight.'); }
+  if (cs.justArrived) { arriveCruise(); return true; }
+  if (cruise && cruise.phase === 'cruise') { // 半自動平飛快轉：玩家可微調航向
+    stepPlane(states[i], { r: (input.r ?? 0) * 0.25, p: -0.015, th: 0.85, gearUp: true }, DT, env, flightParams(planeId));
+    return true;
+  }
+  return false; // climb：讓一般 stepPlane 跑（玩家自己爬升上雲）
+}
+
+// —— 全圖選線 UI（台灣地圖＝地理教材；九機場真實相對位置）——
+const routeMapEl = $('routeMap');
+const routeMapSvg = $('routeMapSvg');
+const routeListEl = $('routeList');
+const routeDepartBtn = /** @type {HTMLButtonElement} */ ($('routeDepartBtn'));
+const cruiseOverlayEl = $('cruiseOverlay');
+let mapPendingDest = /** @type {string|null} */ (null); // 全圖上暫選的目的地（按出發才定）
+
+const MAP_W = 100, MAP_H = 122;
+// 台灣本島輪廓（lat,lng；順時針）——與機場同投影，地理相對位置正確（教材）。
+const TAIWAN_OUTLINE = [
+  [25.30, 121.54], [25.01, 122.01], [24.60, 121.87], [24.02, 121.62], [23.10, 121.40],
+  [22.75, 121.16], [21.92, 120.86], [22.20, 120.63], [22.55, 120.30], [23.10, 120.10],
+  [23.70, 120.13], [24.27, 120.50], [24.83, 120.93], [25.16, 121.28],
+];
+
+/** 繪製全圖（台灣輪廓 + 九機場 + 目前點/可飛點/鎖定點 + 暫選航線）。 */
+function renderRouteMap() {
+  const poly = TAIWAN_OUTLINE.map(([lat, lng]) => { const p = mapXY(lat, lng); return `${(p.x * MAP_W).toFixed(1)},${(p.y * MAP_H).toFixed(1)}`; }).join(' ');
+  let svg = `<polygon points="${poly}" fill="#3a5a44" stroke="#7fc97f" stroke-width="0.7"/>`;
+  // 暫選航線連線（目前機場 → 暫選目的地）
+  if (mapPendingDest) {
+    const a = mapXY(AIRPORTS[curAirportId].lat, AIRPORTS[curAirportId].lng);
+    const b = mapXY(AIRPORTS[mapPendingDest].lat, AIRPORTS[mapPendingDest].lng);
+    svg += `<line x1="${(a.x * MAP_W).toFixed(1)}" y1="${(a.y * MAP_H).toFixed(1)}" x2="${(b.x * MAP_W).toFixed(1)}" y2="${(b.y * MAP_H).toFixed(1)}" stroke="#f2b94b" stroke-width="0.8" stroke-dasharray="2 1.5"/>`;
+  }
+  const dests = new Set(routesFrom(curAirportId).map((r) => routeOtherEnd(r, curAirportId)));
+  for (const id of AIRPORT_IDS) {
+    const ap = AIRPORTS[id]; const p = mapXY(ap.lat, ap.lng);
+    const cx = (p.x * MAP_W).toFixed(1); const cy = (p.y * MAP_H).toFixed(1);
+    const isCur = id === curAirportId;
+    const reachable = dests.has(id) && airportUnlocked(id);
+    const locked = dests.has(id) && !airportUnlocked(id);
+    const fill = isCur ? '#f2b94b' : reachable ? '#7fc97f' : locked ? '#6b7280' : '#2a3450';
+    const r = isCur ? 2.6 : 2.0;
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="#1a2233" stroke-width="0.4"${(reachable || locked) ? ` data-dest="${id}" style="cursor:pointer"` : ''}/>`;
+    if (reachable || locked) svg += `<circle cx="${cx}" cy="${cy}" r="5" fill="transparent" data-dest="${id}" style="cursor:pointer"/>`; // 大命中區
+    svg += `<text x="${cx}" y="${(p.y * MAP_H - 3).toFixed(1)}" font-size="3.2" fill="#f2ead8" text-anchor="middle">${ap.name}${locked ? ' 🔒' : ''}</text>`;
+  }
+  routeMapSvg.innerHTML = svg;
+  for (const el of routeMapSvg.querySelectorAll('[data-dest]')) {
+    el.addEventListener('click', () => {
+      const id = el.getAttribute('data-dest');
+      if (!id) return;
+      if (!airportUnlocked(id)) { mapPendingDest = null; renderRouteMap(); routeListEl.textContent = `🔒 ${AIRPORTS[id].name} 之後的版本開放（v5.1-2）`; routeDepartBtn.disabled = true; return; }
+      mapPendingDest = id; renderRouteMap(); refreshRouteInfo();
+    });
+  }
+  if (!mapPendingDest) refreshRouteInfo();
+}
+
+/** 更新暫選航線資訊（距離 + 出發按鈕）。 */
+function refreshRouteInfo() {
+  if (!mapPendingDest) {
+    routeListEl.innerHTML = `📍 目前在 <b>${air.spec.name}</b>　點地圖上綠色機場選航線`;
+    routeDepartBtn.disabled = true; return;
+  }
+  const km = routeDistanceKm(curAirportId, mapPendingDest);
+  routeListEl.innerHTML = `🛫 <b>${air.spec.name}</b> → <b>${AIRPORTS[mapPendingDest].name}</b>　約 ${km} 公里<br/><small>${airportSpec(mapPendingDest).signature}</small>`;
+  routeDepartBtn.disabled = false;
+}
+
+$('routeMapBtn').addEventListener('click', () => { mapPendingDest = null; renderRouteMap(); routeMapEl.classList.remove('hidden'); });
+$('routeMapClose').addEventListener('click', () => routeMapEl.classList.add('hidden'));
+routeDepartBtn.addEventListener('click', () => {
+  if (!mapPendingDest) return;
+  const r = routesFrom(curAirportId).find((rt) => routeOtherEnd(rt, curAirportId) === mapPendingDest);
+  if (!r) return;
+  selectedRoute = r; selectedDest = mapPendingDest;
+  routeMapEl.classList.add('hidden');
+  const driven = wasDriven.findIndex(Boolean);
+  toast(driven >= 0 ? driven : 0, `🗺 航線設定：${air.spec.name} → ${AIRPORTS[selectedDest].name}。起飛後自動巡航！`);
+});
+
+/** 巡航 overlay HUD（進度條 + ETA + 目的地）每幀更新。 */
+function updateCruiseHud() {
+  if (!cruise) { if (cruiseOverlayEl.classList.contains('show')) cruiseOverlayEl.classList.remove('show'); return; }
+  if (cruise.phase !== 'cruise') return; // climb 段不顯（玩家自己爬）
+  cruiseOverlayEl.classList.add('show');
+  const pct = Math.round(cruise.progress * 100);
+  $('cruiseDest').textContent = `☁️ 雲上巡航　${air.spec.name} → ${airportSpec(cruiseDest ?? '').name}`;
+  $('cruiseBarFill').style.width = `${pct}%`;
+  $('cruiseEta').textContent = `${cruisePhaseLabel(cruise.phase)}　剩 ${cruiseEtaSec(cruise)} 秒`;
+}
+
 // —— 遊戲迴圈：固定步長 60Hz 模擬 + rAF 渲染 ——
 const DT = 1 / 60;
 let last = performance.now();
@@ -590,7 +770,7 @@ function reportPState(now) {
 
 /** 把飛機放回跑道（gentle 歸零 / real 墜毀） @param {number} i */
 function respawnAtRunway(i) {
-  Object.assign(states[i], makePlane(spawnPose(i)));
+  Object.assign(states[i], makePlane(air.spawnPose(i)));
   planes[i].setDamaged(false);
   if (departSlot === i) clearDeparture(); // 離場中墜機 → 收離場狀態（避免在跑道跑 pushback/taxi 邏輯）
   if (corridorSlot === i) clearCorridor();
@@ -622,10 +802,10 @@ function statusHtml(c) {
 function handleForcedLanding(i, now) {
   const s = states[i];
   fxCooldown[i] = now + 1500;
-  const terrain = taipei.terrainAt(s.pos.x, s.pos.z);
+  const terrain = air.terrainAt(s.pos.x, s.pos.z);
   let roadOk = false;
   if (terrain === TERRAIN.ROAD) { // 找所屬車道的最長直段（兩軸取長者）
-    const sample = (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z);
+    const sample = (/** @type {number} */ x, /** @type {number} */ z) => air.terrainAt(x, z);
     const len = Math.max(
       roadClearLength(sample, s.pos.x, s.pos.z, 'x'),
       roadClearLength(sample, s.pos.x, s.pos.z, 'z'),
@@ -887,9 +1067,9 @@ function setAtc(text, radio = false) {
 function spawnFor(slot) {
   if (isCivil(planeId)) {
     const g = taxi.nodes.get(DEPART_GATES[slot] ?? DEPART_GATES[0]);
-    if (g) { const pose = gateParkPose(/** @type {any} */ (g), RUNWAY_DIR); return { x: pose.x, z: pose.z, heading: pose.heading }; }
+    if (g) { const pose = gateParkPose(/** @type {any} */ (g), RWDIR); return { x: pose.x, z: pose.z, heading: pose.heading }; }
   }
-  return spawnPose(slot);
+  return air.spawnPose(slot);
 }
 
 /** 啟動離場流程（ATR spawn-at-gate 後）：登機階段起；與到場互斥。 @param {number} slot */
@@ -922,7 +1102,7 @@ function clearDeparture() {
 /** 起飛後啟動空中走廊（離場爬升→下風→進場下降，一趟完整航班空中段）。 @param {number} slot */
 function startDepartCorridor(slot) {
   corridorActive = true; corridorSlot = slot; corridorIdx = 0;
-  corridorPts = patternPoints(RUNWAY_DIR);
+  corridorPts = patternPoints(RWDIR);
 }
 
 /** 收空中走廊（落地/換機/重生）。 */
@@ -957,11 +1137,11 @@ function startPushback(slot) {
   const apron = path[1] ? taxi.nodes.get(path[1]) : null;
   const next = path[2] ? taxi.nodes.get(path[2]) : null;
   const from = { x: states[slot].pos.x, z: states[slot].pos.z };
-  const to = apron ? nodeWorld(/** @type {any} */ (apron), RUNWAY_DIR) : from;
+  const to = apron ? nodeWorld(/** @type {any} */ (apron), RWDIR) : from;
   let h1 = states[slot].heading;
   if (apron && next) {
-    const aW = nodeWorld(/** @type {any} */ (apron), RUNWAY_DIR);
-    const nW = nodeWorld(/** @type {any} */ (next), RUNWAY_DIR);
+    const aW = nodeWorld(/** @type {any} */ (apron), RWDIR);
+    const nW = nodeWorld(/** @type {any} */ (next), RWDIR);
     h1 = Math.atan2(nW.x - aW.x, -(nW.z - aW.z)); // forward={sin h,-cos h} → 朝下一節點
   }
   pushPath = { from, to, h0: states[slot].heading, h1 };
@@ -1019,11 +1199,11 @@ function updateArrival(slot, now, p) {
   // P3 停妥判定：taxi 階段 + 在指派門框內 + 朝向對 + 速度≈0 → 停妥靠橋（一次性）。
   if (arrivalPhase === 'taxi' && arrivalGate) {
     const gNode = taxi.nodes.get(arrivalGate);
-    if (gNode && isParkedAtGate(states[slot], /** @type {any} */ (gNode), RUNWAY_DIR)) {
+    if (gNode && isParkedAtGate(states[slot], /** @type {any} */ (gNode), RWDIR)) {
       arrivalPhase = 'parked';
       groundNav.clear();
-      const gateW = nodeWorld(/** @type {any} */ (gNode), RUNWAY_DIR);
-      const termDir = { x: RUNWAY_DIR.z, z: -RUNWAY_DIR.x }; // 朝航廈（−lateral）
+      const gateW = nodeWorld(/** @type {any} */ (gNode), RWDIR);
+      const termDir = { x: RWDIR.z, z: -RWDIR.x }; // 朝航廈（−lateral）
       groundNav.dock({ x: gateW.x + termDir.x * BRIDGE_LEN, z: gateW.z + termDir.z * BRIDGE_LEN }, gateW);
       toast(slot, `🛬 停妥靠橋！歡迎抵達松山 ${gNode.label ?? ''}`);
       audio.landingChime();
@@ -1034,23 +1214,23 @@ function updateArrival(slot, now, p) {
   if (arrivalPhase === 'parked') { groundNav.update(DT, p, now); return; } // 停妥：僅跑空橋動畫，ATC 維持「已靠橋」
   if (arrivalPhase === 'exit' && arrivalExit) { // P1：脫離跑道
     const exitNode = taxi.nodes.get(arrivalExit);
-    const exitW = exitNode ? nodeWorld(/** @type {any} */ (exitNode), RUNWAY_DIR) : null;
+    const exitW = exitNode ? nodeWorld(/** @type {any} */ (exitNode), RWDIR) : null;
     if (exitW && Math.hypot(exitW.x - p.x, exitW.z - p.z) < ARRIVAL_REACH_M) {
       arrivalPhase = 'taxi'; gnGate = null;
     } else if (exitW && (!groundNav.active || gnGate !== arrivalExit)) {
       gnGate = arrivalExit;
       const par = exitParallel(taxi, arrivalExit);
-      const parW = par ? nodeWorld(/** @type {any} */ (taxi.nodes.get(par)), RUNWAY_DIR) : null;
+      const parW = par ? nodeWorld(/** @type {any} */ (taxi.nodes.get(par)), RWDIR) : null;
       const route = [{ x: p.x, z: p.z }, exitW, ...(parW ? [parW] : [])];
       groundNav.setRoute(route, atcExit(exitNode?.label ?? '脫離道', gateLabel));
       audio.atcVoice('Vacate the runway. Taxi to your gate, follow the green lights.');
     }
   } else if (arrivalPhase === 'taxi' && (!groundNav.active || gnGate == null)) { // P2：滑到「指派」門
     gnGate = arrivalGate;
-    const start = nearestNode(taxi, p, RUNWAY_DIR);
+    const start = nearestNode(taxi, p, RWDIR);
     const path = start && gnGate ? arrivalRoute(taxi, start, gnGate) : [];
     const lbl = gnGate ? atcTaxiToGate(gateLabel) : '';
-    const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
+    const pts = routeWorldPoints(taxi, path, RWDIR);
     groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, lbl);
     audio.atcVoice('Taxi to your gate. Follow the green lights to the bridge.');
   }
@@ -1064,7 +1244,7 @@ function updateDeparture(slot, now, p) {
   const rwyLabel = DEPART_RWY === 'r28' ? 'RWY 28' : 'RWY 10';
   if (departPhase === 'boarding') {
     if (groundNav.active) groundNav.clear();
-    groundService.showBoarding(states[slot].pos, states[slot].heading, RUNWAY_DIR); // 加油/行李車
+    groundService.showBoarding(states[slot].pos, states[slot].heading, RWDIR); // 加油/行李車
     boardT += DT;
     if (boardT >= BOARD_SEC) {
       if (!boardReady) { boardReady = true; departKeysActive = true; net.sendMode('depart'); audio.atcVoice('Boarding complete. Request pushback. Press confirm.'); } // 遙控器換「確認後推」鍵
@@ -1094,15 +1274,15 @@ function updateDeparture(slot, now, p) {
   if (departPhase === 'taxiOut') {
     const holdId = DEPART_RWY === 'r28' ? 'h28' : 'h10';
     const holdNode = taxi.nodes.get(holdId);
-    const holdW = holdNode ? nodeWorld(/** @type {any} */ (holdNode), RUNWAY_DIR) : null;
+    const holdW = holdNode ? nodeWorld(/** @type {any} */ (holdNode), RWDIR) : null;
     if (holdW && Math.hypot(holdW.x - p.x, holdW.z - p.z) < ARRIVAL_REACH_M) {
       departPhase = 'holdShort'; holdT = 0; groundNav.clear();
       audio.atcVoice('Hold short runway one zero. One aircraft ahead departing.');
     } else if (!groundNav.active || gnGate !== holdId) {
       gnGate = holdId;
-      const start = nearestNode(taxi, p, RUNWAY_DIR);
+      const start = nearestNode(taxi, p, RWDIR);
       const path = start ? departureRoute(taxi, start, DEPART_RWY) : [];
-      const pts = routeWorldPoints(taxi, path, RUNWAY_DIR);
+      const pts = routeWorldPoints(taxi, path, RWDIR);
       groundNav.setRoute(pts.length ? [{ x: p.x, z: p.z }, ...pts] : pts, atcTaxiToHold(rwyLabel));
       audio.atcVoice('Taxi to runway one zero holding point. Follow the green lights.');
     }
@@ -1126,8 +1306,8 @@ function updateDeparture(slot, now, p) {
   if (departPhase === 'cleared') { // 進跑道、對正、推油門（綠線帶上跑道並沿跑道；起飛偵測在 justTookOff）
     if (!groundNav.active || gnGate !== 'TKOF') {
       gnGate = 'TKOF';
-      const r10W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r10')), RUNWAY_DIR);
-      const r28W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r28')), RUNWAY_DIR);
+      const r10W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r10')), RWDIR);
+      const r28W = nodeWorld(/** @type {any} */ (taxi.nodes.get('r28')), RWDIR);
       groundNav.setRoute([{ x: p.x, z: p.z }, r10W, r28W], atcCleared(rwyLabel));
     }
     groundNav.update(DT, p, now);
@@ -1158,10 +1338,12 @@ function loop(/** @type {number} */ now) {
       }
       lastInputs[i] = input;
       if (input.confirm) pendingConfirm = true; // v4.1-1 離場確認閂鎖（脈衝可能被某 sub-step 取走，這裡 latch）
+      // V5 航線巡航：cruiseSlot 在 cruise 段＝半自動快轉（略過一般物理/碰撞）；climb 段照常飛（玩家爬升上雲）。
+      if (cruise && i === cruiseSlot && updateCruiseStep(i, input)) continue;
       const prev = { ...states[i].pos };
       stepPlane(states[i], input, DT, env, flightParams(planeId)); // 機型手感（T-34C 缺省＝位元不變）
       if (states[i].justForcedTouch) { handleForcedLanding(i, now); continue; }
-      const hit = collidePlane(states[i], prev, taipei.solidAt);
+      const hit = collidePlane(states[i], prev, air.solidAt);
       if ((hit || states[i].justBounced) && now > fxCooldown[i]) {
         fxCooldown[i] = now + 1500;
         net.sendFx(i, 'bump');
@@ -1179,8 +1361,10 @@ function loop(/** @type {number} */ now) {
       }
       if (states[i].justTookOff) {
         toast(i, '起飛！✈️');
-        // 任何 ATR 起飛都接空中走廊（不限走完地面離場流程）→ 確保空中指引一定出現（HITL 2026-06-20）。
-        if (isCivil(planeId)) { clearDeparture(); startDepartCorridor(i); }
+        // V5 航線飛行：起飛時若已選定航線 → 進雲上巡航（任何機種；取代本場 traffic pattern）。
+        if (selectedRoute && cruiseSlot < 0) beginCruise(i);
+        // 否則民航機起飛接本場空中走廊（HITL 2026-06-20：確保空中指引一定出現）。
+        else if (isCivil(planeId)) { clearDeparture(); startDepartCorridor(i); }
       }
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
@@ -1188,7 +1372,7 @@ function loop(/** @type {number} */ now) {
         if (isCivil(planeId)) {
           clearDeparture(); clearCorridor(); // 落地＝到場：清離場/空中走廊（避免殘留擋住到場流程）
           const fwd = { x: Math.sin(states[i].heading), z: -Math.cos(states[i].heading) };
-          arrivalExit = selectArrivalExit(taxi, states[i].pos, fwd, RUNWAY_DIR);
+          arrivalExit = selectArrivalExit(taxi, states[i].pos, fwd, RWDIR);
           arrivalGate = assignArrivalGate(taxi, arrivalSeq++); // P2 塔台指派（輪派）
           arrivalPhase = arrivalExit ? 'exit' : 'taxi';
           gnGate = null; // 強制重算導航路線（脫離道優先）
@@ -1198,7 +1382,7 @@ function loop(/** @type {number} */ now) {
         if (playMode === 'mission') handleRunnerEvent(i, runner.notify(i, 'landed_runway', { x: states[i].pos.x, z: states[i].pos.z }));
         // v3.0-2 側風劣質著陸：偏離跑道中線/接地過快 → 受損%（真實模式 + 有風才咬）
         if (conseq[i].mode === 'real' && weatherForces(weather.type).windSpeed > 0) {
-          const offsetM = Math.abs(states[i].pos.x * (-RUNWAY_DIR.z) + states[i].pos.z * RUNWAY_DIR.x); // 離跑道中線橫距
+          const offsetM = Math.abs(states[i].pos.x * (-RWDIR.z) + states[i].pos.z * RWDIR.x); // 離跑道中線橫距
           applyWeatherDamage(i, crosswindDamagePct({ offsetM, speedMps: states[i].speed }), '側風');
         }
       }
@@ -1276,9 +1460,9 @@ function loop(/** @type {number} */ now) {
     // 回家箭頭：飛離機場 >900m 才出現；箭頭 = 機場方位相對機頭的夾角
     const dist = Math.hypot(s.pos.x, s.pos.z);
     if (s.mode === 'flying' && dist > 900) {
-      const bearingHome = Math.atan2(-s.pos.x, s.pos.z); // 朝原點（松機）的 heading
+      const bearingHome = Math.atan2(-s.pos.x, s.pos.z); // 朝原點（目前機場）的 heading
       const rel = wrapAngle(bearingHome - s.heading);     // 0 = 正前方
-      hud.setHome(i, rel, `松山機場 ${(dist / 1000).toFixed(1)}km`);
+      hud.setHome(i, rel, `${air.spec.name} ${(dist / 1000).toFixed(1)}km`);
     } else {
       hud.setHome(i, 0, null);
     }
@@ -1296,6 +1480,7 @@ function loop(/** @type {number} */ now) {
   // 瞄準框（vr.render 後 → 相機矩陣已更新）：空戰時每視口一個，平常置中、鎖定後追瞄。
   for (let i = 0; i < MAX_SLOTS; i++) updateReticle(i);
   renderMinimap();
+  updateCruiseHud(); // V5 雲上巡航 overlay（進度/ETA/目的地）
   updateGroundNav(now); // V4 地面導航（ATR 在地面 → 跟我車/綠中線燈/ATC 文字）
   updateAirCorridor(now); // V4.1 空中走廊（ATR 空中 → 離場/進場穿越環 + ATC）
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
@@ -1352,7 +1537,7 @@ requestAnimationFrame(loop);
   dodges, // v3 e2e/dev：翻滾閃避狀態
   isDodging: (/** @type {number} */ slot) => dodging(dodges[slot], performance.now()), // v3 e2e：是否在閃避窗
   breakLocks: (/** @type {number} */ slot) => dogfight.breakLocksOn(slot),
-  terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => taipei.terrainAt(x, z),
+  terrainAt: (/** @type {number} */ x, /** @type {number} */ z) => air.terrainAt(x, z),
   // e2e/dev：直接完成當前任務（略過飛到定點），驗任務迴圈 + 收集 + 慶祝
   completeMission: (/** @type {number} */ slot) => {
     const ev = runner.devComplete(slot, { x: states[slot].pos.x, z: states[slot].pos.z });
@@ -1360,4 +1545,18 @@ requestAnimationFrame(loop);
     return ev;
   },
   get drawCalls() { return vr.info.render.calls; },
+  // —— V5 航網 e2e/dev hooks ——
+  get curAirport() { return curAirportId; },
+  get airportName() { return air.spec.name; },
+  loadAirport: (/** @type {string} */ id) => loadAirport(id),
+  selectRoute: (/** @type {string} */ destId) => { // 直接設定航線（略過全圖點擊）
+    const r = routesFrom(curAirportId).find((rt) => routeOtherEnd(rt, curAirportId) === destId);
+    if (r) { selectedRoute = r; selectedDest = destId; }
+    return !!r;
+  },
+  get cruise() { return cruise ? { phase: cruise.phase, progress: cruise.progress, dest: cruiseDest, routeId: cruiseRouteId } : null; },
+  get selectedDest() { return selectedDest; },
+  get lastRouteFlown() { return lastRouteFlown; },
+  arriveNow: () => { if (cruise) { cruise.phase = 'cruise'; cruise.progress = 1; cruise.elapsed = cruise.durationSec; arriveCruise(); } }, // e2e：快轉巡航抵達
+  airports: AIRPORTS,
 };
