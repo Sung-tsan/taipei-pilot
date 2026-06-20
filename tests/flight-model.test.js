@@ -44,6 +44,14 @@ describe('起飛', () => {
     expect(s.mode).toBe('rolling');
     expect(s.pos.y).toBe(0);
   });
+
+  it('地面滑行：低速滿舵轉得動（滑行道過得了彎；HITL 2026-06-20）', () => {
+    const s = makePlane({ heading: 0 });
+    fly(s, { r: 1, th: 0.2 }, 3); // 滑行速（~8 m/s）+ 滿右舵
+    expect(s.mode).toBe('rolling');
+    expect(s.speed).toBeLessThan(P.V_ROTATE);          // 仍在滑行、沒起飛
+    expect(Math.abs(s.heading)).toBeGreaterThan(0.8);  // 確實轉過彎（>45°）；舊版半徑 ~115m 幾乎不動
+  });
 });
 
 describe('街機保護', () => {

@@ -21,6 +21,9 @@ export const P = {
   GROUND_ACCEL: 10,     // m/s² 地面加速
   GROUND_DRAG: 6,       // m/s² 地面無油門減速
   GROUND_TOP: 42,       // m/s 地面滾行極速（> V_ROTATE 才起得來）
+  GROUND_TURN: 0.4,     // rad/s 滿舵地面轉向（gain；高速與舊值同 → 起飛滾行手感不變）
+  GROUND_TURN_SPEED: 8, // m/s 達此速即滿轉向權威（HITL 2026-06-20：原用 V_ROTATE→滑行轉太鈍、ATR 轉不過彎；
+                        //   改用滑行參考速 → 低速滑行轉半徑 ≈ GROUND_TURN_SPEED/GROUND_TURN ≈ 20m（過得了滑行道）。
   MAX_BANK: 0.8,        // rad（≈46°）
   BANK_RATE: 2.0,       // rad/s（v2.0-4 HITL：滾得更快才閃得過敵彈；最大傾角不變→自由飛手感大致保留）
   MAX_PITCH: 0.35,      // rad（≈20°，地平線永遠在畫面內 → 減暈）
@@ -141,8 +144,8 @@ function stepRolling(s, input, dt, env, params) {
   const rate = target > s.speed ? params.GROUND_ACCEL : params.GROUND_DRAG;
   s.speed = approach(s.speed, target, rate, dt);
 
-  // 地面轉向：低速才轉得動方向（不會原地打轉）
-  const steer = input.r * 0.4 * clamp(s.speed / params.V_ROTATE, 0, 1);
+  // 地面轉向：低速滑行也轉得動（nosewheel 感），靜止不打轉；高速與舊版同（起飛滾行不變）。
+  const steer = input.r * params.GROUND_TURN * clamp(s.speed / params.GROUND_TURN_SPEED, 0, 1);
   s.heading = wrapAngle(s.heading + steer * dt);
   s.bank = approach(s.bank, 0, params.BANK_RATE, dt);
   s.pitch = approach(s.pitch, 0, params.PITCH_RATE, dt);

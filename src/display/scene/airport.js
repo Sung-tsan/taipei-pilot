@@ -65,9 +65,9 @@ export function makeAirport() {
   const markMat = new THREE.MeshLambertMaterial({ color: '#f0efe8' });
   for (const g of dashGeos) group.add(new THREE.Mesh(g, markMat));
 
-  // 停機坪（跑道北側）
+  // 停機坪（跑道北側）—— 加寬覆蓋 6 個登機門（along ±250；HITL 2026-06-20）
   const apron = new THREE.Mesh(
-    new THREE.BoxGeometry(420, 0.3, 260),
+    new THREE.BoxGeometry(600, 0.3, 300),
     new THREE.MeshLambertMaterial({ color: '#9a9a92' }),
   );
   apron.position.set(0, 0.15, -(RUNWAY.width / 2 + 160));
@@ -101,12 +101,13 @@ export function makeAirport() {
     scale: 1,
     palette: { B: '#e8ddc8', R: '#c8b9a0', T: '#d9cdb4', D: '#3a4666', C: '#bfe3f0' },
     boxes: [
-      [-160, 0, -40, 320, 18, 60, 'B'],   // 航廈本體
-      [-160, 18, -40, 320, 3, 60, 'R'],   // 屋頂
-      [-150, 4, 18, 300, 8, 4, 'C'],      // 玻璃帶
-      [120, 0, 40, 26, 42, 26, 'T'],      // 塔台柱
-      [112, 42, 32, 42, 12, 42, 'D'],     // 塔台機艙
-      [108, 54, 28, 50, 3, 50, 'R'],      // 塔台帽
+      // 航廈本體加寬覆蓋 6 門（along ±250；HITL 2026-06-20：原 ±160 outer 門沒航廈、空橋接空氣）
+      [-290, 0, -40, 580, 18, 60, 'B'],   // 航廈本體
+      [-290, 18, -40, 580, 3, 60, 'R'],   // 屋頂
+      [-280, 4, 18, 560, 8, 4, 'C'],      // 玻璃帶
+      [330, 0, 40, 26, 42, 26, 'T'],      // 塔台柱（右移到 6 號門外側、不擋登機門）
+      [322, 42, 32, 42, 12, 42, 'D'],     // 塔台機艙
+      [318, 54, 28, 50, 3, 50, 'R'],      // 塔台帽
     ],
   });
   const bMesh = new THREE.Mesh(buildings, voxelMaterial());

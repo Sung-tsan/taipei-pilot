@@ -131,9 +131,26 @@ export class GameAudio {
   /** ATC 塔台無線電「咔」聲（收發 squelch）：短嘶聲（band-pass 感雜訊爆）+ 雙咔（對講機感）。 */
   atcRadio() {
     if (!this._on()) return;
-    this._noise(0.07, 0.045, 1900, 1300, 0);     // 短嘶聲（高頻雜訊爆＝無線電底噪）
-    this._tone('square', 620, 600, 0.025, 0.07, 0);     // 收咔
-    this._tone('square', 540, 520, 0.025, 0.05, 0.09);  // 發咔（尾）
+    this._noise(0.08, 0.11, 2000, 1300, 0);      // 短嘶聲（高頻雜訊爆＝無線電底噪）
+    this._tone('square', 640, 600, 0.03, 0.17, 0);      // 收咔
+    this._tone('square', 540, 510, 0.03, 0.13, 0.1);    // 發咔（尾）
+  }
+
+  /**
+   * ATC 語音（瀏覽器內建 TTS，zh-TW；零資產成本，配合 atcRadio squelch 念出指示）。
+   * @param {string} text
+   */
+  atcVoice(text) {
+    try {
+      const synth = /** @type {any} */ (window).speechSynthesis;
+      if (!synth || !this.enabled) return;
+      const clean = text.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{FE0F}]/gu, '').trim();
+      if (!clean) return;
+      synth.cancel(); // 不排隊堆積（新指示打斷舊的）
+      const u = new SpeechSynthesisUtterance(clean);
+      u.lang = 'zh-TW'; u.rate = 1.15; u.pitch = 1.0; u.volume = 0.95; // 略快＝無線電感
+      synth.speak(u);
+    } catch { /* TTS 不可用：靜默（仍有 squelch + 文字） */ }
   }
 
   /** 失速警告（街機式「失速喇叭」：兩聲短促 warble，提醒壓低機頭/補油門）。 */

@@ -115,7 +115,7 @@ let arrivalExit = /** @type {string|null} */ (null); // 落地選定的脫離道
 let arrivalGate = /** @type {string|null} */ (null); // 塔台指派登機門 id（P2；落地時定一次）
 let arrivalSeq = 0; // 到場序（P2 輪派 gate；跨多次到場遞增＝每次停不同門）
 const ARRIVAL_REACH_M = 70; // m 視為「抵達脫離道接點」的容差（轉 taxi 階段）
-const BRIDGE_LEN = 58;      // m 空橋長（航廈端 → 登機門；P3 靠橋）
+const BRIDGE_LEN = 40;      // m 空橋長（登機門 → 航廈前緣；HITL 2026-06-20：門貼近航廈後縮短）
 // v4.1-1 離場流程狀態機：spawn-at-gate 的 ATR 走 boarding→pushback→taxiOut→holdShort→cleared→起飛。
 // 'none'＝非離場。離場與到場互斥（同一架不會同時）。
 let departPhase = /** @type {'none'|'boarding'|'pushback'|'taxiOut'|'holdShort'|'cleared'} */ ('none');
@@ -868,7 +868,7 @@ function setAtc(text, radio = false) {
   const el = $('atcBanner');
   el.textContent = text;
   el.classList.toggle('show', !!text);
-  if (radio && text && text !== lastAtc) audio.atcRadio(); // v4.1-2 無線電 squelch（對講機感）
+  if (radio && text && text !== lastAtc) { audio.atcRadio(); audio.atcVoice(text); } // v4.1-2 squelch + 念出指示（瀏覽器 TTS）
   lastAtc = text;
 }
 
@@ -887,6 +887,18 @@ function startDeparture(slot) {
   departGate = DEPART_GATES[slot] ?? DEPART_GATES[0];
   boardT = 0; pushT = 0; pushPath = null; holdT = 0; boardReady = false; pendingConfirm = false;
   arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
+}
+
+/** 地面 ModeSlot 提示文字：離場 slot 顯示當前離場階段引導，否則「推滿油門起飛」。 @param {number} i */
+function departHintFor(i) {
+  if (i !== departSlot || departPhase === 'none') return '🛫 推滿油門起飛！';
+  switch (departPhase) {
+    case 'boarding': return boardReady ? '✅ 確認後推（按 Enter／手機鈕）' : '🛫 登機中…請稍候';
+    case 'pushback': return '🚜 後推中…引導車推飛機';
+    case 'taxiOut': return '🟢 跟綠燈滑到跑道頭';
+    case 'holdShort': return '⏳ 等待點等待起飛許可';
+    default: return '🛫 推滿油門起飛！'; // cleared
+  }
 }
 
 /** 結束離場流程（起飛/換機/重生）。 */
@@ -1147,7 +1159,8 @@ function loop(/** @type {number} */ now) {
       }
       if (states[i].justTookOff) {
         toast(i, '起飛！✈️');
-        if (planeId === 'atr72' && departPhase !== 'none') { clearDeparture(); startDepartCorridor(i); } // 離場地面結束 → 接空中離場 corridor（block B）
+        // 任何 ATR 起飛都接空中走廊（不限走完地面離場流程）→ 確保空中指引一定出現（HITL 2026-06-20）。
+        if (planeId === 'atr72') { clearDeparture(); startDepartCorridor(i); }
       }
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
@@ -1234,7 +1247,7 @@ function loop(/** @type {number} */ now) {
       }
       hud.setAlt(i, altText);
     } else {
-      hud.setMode(i, '🛫 推滿油門起飛！');
+      hud.setMode(i, departHintFor(i)); // 離場流程相關提示（登機/確認後推/滑行…），否則「推滿油門起飛」
       hud.setAlt(i, ''); // 地面上隱藏高度帶
     }
     // 回家箭頭：飛離機場 >900m 才出現；箭頭 = 機場方位相對機頭的夾角

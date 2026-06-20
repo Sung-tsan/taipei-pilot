@@ -23,7 +23,7 @@ const HALF = 2605 / 2;        // 跑道半長（與 airport.js RUNWAY.length 同
 const PAR_LAT = -90;          // 平行滑行道側距（跑道中線南側）
 const HOLD_LAT = -45;         // 等待點（跑道邊與平行道之間）
 const APRON_LAT = -200;       // 停機坪滑行線
-const GATE_LAT = -250;        // 登機門停機位（航廈邊）
+const GATE_LAT = -290;        // 登機門停機位（貼近航廈；HITL 2026-06-20：原 -250 離航廈太遠、空橋接不到）
 
 /** 松山滑行道節點表（along, lateral 公尺）。代號待 AIP 微調。 */
 const NODE_DEFS = /** @type {TaxiNode[]} */ ([
