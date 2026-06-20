@@ -19,18 +19,20 @@ export class ChaseCam {
    * @param {import('../flight/flight-model.js').PlaneState} s
    * @param {number} dt
    * @param {number} [shake] 亂流鏡頭微晃幅度 0..1（v3.0-2，極輕、可關；減暈）
+   * @param {number} [scale] 機體大小倍率（大機如 A330 把鏡頭往後/上拉，避免鑽進機身；小機=1）
    */
-  update(s, dt, shake = 0) {
+  update(s, dt, shake = 0, scale = 1) {
     const dx = Math.sin(s.heading), dz = -Math.cos(s.heading);
+    const back = BACK * scale, up = UP * scale, ahead = AHEAD * scale;
     const targetPos = new THREE.Vector3(
-      s.pos.x - dx * BACK,
-      Math.max(s.pos.y + UP, 3), // 地面滾行時不鑽進地下
-      s.pos.z - dz * BACK,
+      s.pos.x - dx * back,
+      Math.max(s.pos.y + up, 3), // 地面滾行時不鑽進地下
+      s.pos.z - dz * back,
     );
     const targetLook = new THREE.Vector3(
-      s.pos.x + dx * AHEAD,
+      s.pos.x + dx * ahead,
       s.pos.y + s.pitch * 30 + 2, // 俯仰時注視點跟著抬/壓一點
-      s.pos.z + dz * AHEAD,
+      s.pos.z + dz * ahead,
     );
     if (!this._init) {
       this._pos.copy(targetPos);

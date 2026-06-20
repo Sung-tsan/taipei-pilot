@@ -19,7 +19,7 @@ import { makeTaipei } from './scene/taipei.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
-import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE } from './planes/plane-specs.js';
+import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE, isGlbModel } from './planes/plane-specs.js';
 import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
@@ -1217,6 +1217,9 @@ function loop(/** @type {number} */ now) {
   // 喇叭已改由 remote 本地播（兩機同玩不互相干擾）→ display 端不再處理 horn。
 
   // 視覺同步 + 相機 + 渲染
+  // 鏡頭距離隨機體大小（大機把鏡頭往後/上拉，避免鑽進機身）：ATR(27)→1、A330(50)→~1.8、voxel→1。
+  const _m = planeSpec(planeId).model;
+  const camScale = Math.max(1, (isGlbModel(_m) ? _m.lengthM : 12) / 28);
   const views = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
@@ -1224,7 +1227,7 @@ function loop(/** @type {number} */ now) {
     planes[i].sync(states[i], lastInputs[i].th, frame, env.groundY);
     // 亂流鏡頭微晃（只真實模式 + 設定開；安全/溫和或關閉＝0 完全不晃，減暈）
     const shake = (conseq[i].mode === 'real' && settings.camShake && states[i].mode === 'flying') ? weatherForces(weather.type).turb : 0;
-    cams[i].update(states[i], frame, shake);
+    cams[i].update(states[i], frame, shake, camScale);
     views.push(cams[i]);
   }
   labels.update(states.filter((_, i) => wasDriven[i]).map((s) => s.pos));
