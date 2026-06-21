@@ -355,6 +355,13 @@ test('到場全鏈：落地→脫離→指派門→停妥靠橋', async ({ brows
   ).toBe(true);
   // 停妥 ATC「靠橋」（v5.1-1 起 ATC 走 grounded bank 變體，斷言穩定關鍵詞「靠橋」而非特定句）
   await expect(display.locator('#atcBanner')).toContainText('靠橋');
+  const dockedGate = await display.evaluate(() => /** @type {any} */ (window).__tp.arrival.gate); // 停妥的門
+  // v5.1-2 HITL：過站轉離場——靠橋後自動開新一班（departure.phase→boarding），航班循環不卡死（沒修＝永遠 none → 紅）。
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.departure.phase),
+    { timeout: 12000 },
+  ).toBe('boarding');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.departure.gate)).toBe(dockedGate); // 從停妥的門出發
   await ctx.close();
 });
 

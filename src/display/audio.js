@@ -13,6 +13,11 @@ export class GameAudio {
     this.enabled = false;
   }
 
+  /** 分頁切走/關閉 → 暫停音訊（HITL 2026-06-21：畫面關掉聲音還一直響）。 */
+  suspend() { try { this.ctx?.suspend(); } catch { /* ignore */ } }
+  /** 分頁切回 → 恢復（僅在已啟用過音訊時）。 */
+  resume() { try { if (this.enabled) this.ctx?.resume(); } catch { /* ignore */ } }
+
   /** 在任何 user gesture 內呼叫（重複呼叫無害） */
   ensure() {
     if (this.ctx) { this.ctx.resume(); return; }

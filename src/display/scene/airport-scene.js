@@ -31,6 +31,14 @@ import { airport } from './airports.js';
  * }} AirportScene
  */
 
+/** 各地形的航廈色票（HITL 2026-06-21：各機場航廈不同色，免得每場一樣）。B 牆/R 屋頂/C 玻璃/T 塔柱/D 塔艙。 */
+const TERMINAL_PALETTES = /** @type {Record<string, Record<string,string>>} */ ({
+  coast: { B: '#cfd8e0', R: '#9bb0c9', T: '#aeb8c4', D: '#33405e', C: '#bfe3f0' },   // 海邊：藍灰
+  island: { B: '#efe6cf', R: '#d8c39a', T: '#e2d6bb', D: '#5b8a72', C: '#cfeae0' },  // 離島：米沙+綠頂
+  mountain: { B: '#d8c8a8', R: '#a8794f', T: '#c8b68f', D: '#5a6b3a', C: '#cfe3d2' }, // 山區：暖木+綠
+  city: { B: '#e8ddc8', R: '#c8b9a0', T: '#d9cdb4', D: '#3a4666', C: '#bfe3f0' },     // 市區：米白（松山家族）
+});
+
 /** 建一個機場的完整場景（spec.id==='tsa' → 松山手刻；其餘 → template）。 @param {string} id @returns {AirportScene} */
 export function makeAirportScene(id) {
   const spec = airport(id);
@@ -99,15 +107,19 @@ function makeTemplateScene(spec) {
   if (stripGeos.length) { const m = new THREE.Mesh(mergeGeometries(stripGeos), new THREE.MeshLambertMaterial({ color: '#8f8f87' })); stripGeos.forEach((g) => g.dispose()); group.add(m); }
 
   // —— 停機坪 + 航廈 + 塔台（voxel；通用件，§11 未來可換 CC0）——
+  // HITL 2026-06-21：各機場航廈用不同色票/規模，免得每場長得一樣（依地形 + 難度梯度）。
+  const PAL = TERMINAL_PALETTES[spec.terrain] ?? TERMINAL_PALETTES.coast;
+  const sizeK = spec.tier === 'intro' ? 1.15 : spec.tier === 'expert' ? 0.7 : 1; // 大型場大、離島小
   const apron = new THREE.Mesh(new THREE.BoxGeometry(Math.min(600, L * 0.42), 0.3, 300), new THREE.MeshLambertMaterial({ color: '#9a9a92' }));
   apron.position.set(0, 0.15, -(W / 2 + 160)); group.add(apron);
-  const termW = Math.min(580, L * 0.4);
+  const termW = Math.min(580, L * 0.4) * sizeK;
+  const termH = 18 * sizeK;
   const terminal = buildVoxelGeometry({
     scale: 1,
-    palette: { B: '#e8ddc8', R: '#c8b9a0', T: '#d9cdb4', D: '#3a4666', C: '#bfe3f0' },
+    palette: PAL,
     boxes: [
-      [-termW / 2, 0, -40, termW, 18, 60, 'B'],
-      [-termW / 2, 18, -40, termW, 3, 60, 'R'],
+      [-termW / 2, 0, -40, termW, termH, 60, 'B'],
+      [-termW / 2, termH, -40, termW, 3, 60, 'R'],
       [-termW / 2 + 10, 4, 18, termW - 20, 8, 4, 'C'],
       [termW / 2 + 40, 0, 40, 26, 42, 26, 'T'],
       [termW / 2 + 32, 42, 32, 42, 12, 42, 'D'],
@@ -117,7 +129,7 @@ function makeTemplateScene(spec) {
   const termMesh = new THREE.Mesh(terminal, voxelMaterial());
   termMesh.position.set(0, 0, -(W / 2 + 320));
   group.add(termMesh);
-  const termFoot = { cx: 0, cz: -(W / 2 + 320), hw: termW / 2 + 30, hd: 60, h: 21 };
+  const termFoot = { cx: 0, cz: -(W / 2 + 320), hw: termW / 2 + 30, hd: 60, h: termH + 3 };
 
   // —— 招牌地標（手刻 voxel；一場一座，給機場識別；§11 例外＝地標續用 voxel）——
   const lm = buildSignature(group, spec, W);

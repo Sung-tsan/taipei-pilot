@@ -8,10 +8,10 @@
 | 檢查 | 指令 | 期望 |
 |------|------|------|
 | 型別 | `npm run typecheck` | 0 errors |
-| 單元 | `npm test`（vitest） | **404 passed**（41 files；V5 新增 airports/route-engine/fuel/atc-bank + collection 航網 + b737 spec） |
-| 整合 | `npm run e2e`（playwright） | **41 passed**（connect ×11 + flight ×30；+全圖選線/雲上巡航/機場切換/航網收集/油量油盡/真 ATC 機場感知/B737/九機場 rollout/template perf） |
+| 單元 | `npm test`（vitest） | **408 passed**（42 files；V5 airports/route-engine/fuel/atc-bank + collection 航網 + b737 + collision 回歸） |
+| 整合 | `npm run e2e`（playwright） | **41 passed**（connect ×11 + flight ×30；+全圖選線/雲上巡航/機場切換/航網收集/油量油盡/真 ATC 機場感知/B737/九機場 rollout/template perf + 到場過站轉離場） |
 
-> **V5 baseline 前（V4）= 362 unit / 31 e2e**（tag `taipei-pilot-v4.0`）。V5 = +42 unit / +10 e2e。
+> **V5 baseline 前（V4）= 362 unit / 31 e2e**（tag `taipei-pilot-v4.0`）。V5 含 HITL 第一輪五修 = +46 unit / +10 e2e。
 
 ### V3 HITL 五修（2026-06-15 Sung 實玩 v3 回報）
 1. **雙人 HUD 上排互疊看不到彈藥** → 分屏時武器/彈藥卡（ModeSlot）下移到第二排靠右 + 縮字（`index.html`）。
@@ -27,6 +27,13 @@
 三項全綠＝可動工。任一非預期紅燈 → 先比對下方「已知非問題」，不在表上才算真紅。
 
 ## 已修的坑（log，不要回退）
+
+- **2026-06-21 V5 雙真機 HITL 第一輪五修（Sung 實玩 V5）**
+  1. **過站卡死無法再出發**：到場靠橋後 `arrivalPhase='parked'` 只跑空橋動畫、無「過站轉離場」→ 卡在 gate。修：靠橋後 `TURNAROUND_MS` 過站 → 自動 `startDeparture(slot, 停妥的門)`（登機→確認後推→…），航班循環不卡死。回歸：`到場全鏈` e2e 加 `departure.phase→boarding`。
+  2. **滑過頭卡在航廈頂、不能動**（桃園）：`collidePlane` 開頭 `if(mode!=='flying') return false` 假設「地面只在淨空跑道區」→ 地面滑進航廈 footprint 被 `groundY` 抬上 21m 屋頂卡死。修：地面撞建築 footprint＝擋牆（退回上一安全位置 + 停住、不走 mishap），不爬屋頂/不穿牆。回歸：`tests/collision.test.js`。
+  3. **畫面關掉聲音還一直響**：無 visibilitychange 處理 → AudioContext 背景續跑。修：`GameAudio.suspend/resume` + main `visibilitychange`/`pagehide` → 分頁隱藏/關閉暫停、切回恢復。
+  4. **起降難對正、視角像偏右後方**：相機本在機尾正後方（無左右偏移），但 `rotateZ(bank*0.25)` 傾斜過大→banked 時畫面歪。修：傾斜 0.25→0.12（地平線更穩好對正；相機若仍偏，疑為 GLB 模型 pivot＝資產追查，POLISH_BACKLOG）。
+  5. **各機場長一樣／停機坪都是同款小飛機**：`AirportLife` 原為單一松山定向實例共用於所有機場 + 機隊全 t34c。修：per-airport（依跑道方位/長度定向、機隊依機場序混 t34c/f16/客機剪影、loadAirport 重建）+ template 航廈依地形換色票/規模。
 
 - **2026-06-13 e2e `connect.spec.js`「遊戲中被 OS 轉直」測試隔離洩漏**
   - 症狀：單獨跑過、整檔跑紅（`#full` 滿員畫面攔截 `#calDoneBtn`）。

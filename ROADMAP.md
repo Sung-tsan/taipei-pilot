@@ -45,7 +45,8 @@
 > **v5.0-2 油量+航班+航網收集**：`fuel.js`（耗油+航程 gate rangeKm/canReach+油低警告+油盡一次性）；本地油盡→引擎熄火接迫降、長航線航程不足→海上迫降返航（複用 v1.1-2）；只真實咬油、安全/溫和無限；載客+準點結算；`collection-store` routes+networkCelebrated；飛抵航線點亮（收集簿航網區）+九航線全通大慶祝。
 > **v5.1-1 真 ATC grounded bank**：`atc-bank.js`（8 階段 grounded 變體 DRAFT + validateVariant 三件套結構驗證 + pickVariant + 固定地板 fallback）+ `atc-phraseology.js` 機場感知（站名走 air.spec.name）+ `scripts/gen-atc-bank.js`（build-time Haiku 生成器，raw fetch、遊戲 runtime 零雲端）。
 > **v5.1-2 收尾**：機隊 **B737**（787 GLB 縮窄體代用 + 大油箱 range≈396km）；**九機場全 rollout**（airportUnlocked 全開）；V3 **招牌天氣活化**（澎湖 windScale 1.9、花蓮 turbScale 1.6、台東/馬祖混合，curForces 疊倍率）；template 機場 perf draws<300 e2e。
-> **取捨（明示，harvest 進 POLISH_BACKLOG）：** 巡航半自動快轉（不渲染跨海 300km）；B737/A330 共用 787 GLB（窄體/航司塗裝＝資產缺口）；ATC bank 為 hand-authored grounded 種子 + 生成器（無 API key 無法此地跑）；AirportLife 仍世界原點共用；英文 TTS 部分松山中心；航程 gate K=0.18 待手感校。
+> **取捨（明示，harvest 進 POLISH_BACKLOG）：** 巡航半自動快轉（不渲染跨海 300km）；B737/A330 共用 787 GLB（窄體/航司塗裝＝資產缺口）；ATC bank 為 hand-authored grounded 種子 + 生成器（無 API key 無法此地跑）；英文 TTS 部分松山中心；航程 gate K=0.18 待手感校。
+> **V5 HITL 第一輪五修（2026-06-21，Sung 實玩）：** ①到場靠橋後過站轉離場（解卡 gate 無法再出發）②地面撞航廈＝擋牆退回（解卡航廈頂；`tests/collision.test.js` 回歸）③分頁隱藏/關閉暫停音訊 ④相機 bank 傾斜調小好對正 ⑤AirportLife per-airport 定向+機隊變化 + 航廈依地形換色票（解各機場長一樣）。typecheck 0 / 408 unit / 41 e2e。詳見 `TEST_BASELINE.md`。
 > **待 Sung：V5 DRAFT 校稿（`handoff/2026-06-21_v5_DRAFT_校稿清單.md`：9 航線 fact + 招牌文字/倍率 + ATC bank + 6 天氣表）+ 雙真機 HITL 全項（全圖選線→巡航→到達不暈／B737-A330 手感／九機場招牌挑戰／油量油盡迫降／九航線全通慶祝／真 ATC 適齡無線電感／不掉幀）→ 清 DRAFT 旗標 → 打 tag `taipei-pilot-v5.0`（＝北極星 V1→V5 全達成；agent 不代簽/不代打 tag）。**
 >
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**

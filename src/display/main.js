@@ -135,6 +135,8 @@ let arrivalPhase = /** @type {'none'|'exit'|'taxi'|'parked'} */ ('none');
 let arrivalExit = /** @type {string|null} */ (null); // 落地選定的脫離道節點 id（P1）
 let arrivalGate = /** @type {string|null} */ (null); // 塔台指派登機門 id（P2；落地時定一次）
 let arrivalSeq = 0; // 到場序（P2 輪派 gate；跨多次到場遞增＝每次停不同門）
+let parkedAt = 0;   // 靠橋停妥時間戳（過站轉離場用；0＝未停妥）
+const TURNAROUND_MS = 4500; // 靠橋後過站時間 → 自動開新一班離場（航班循環不卡死，HITL 2026-06-21）
 const ARRIVAL_REACH_M = 70; // m 視為「抵達脫離道接點」的容差（轉 taxi 階段）
 const BRIDGE_LEN = 40;      // m 空橋長（登機門 → 航廈前緣；HITL 2026-06-20：門貼近航廈後縮短）
 // v4.1-1 離場流程狀態機：spawn-at-gate 的 ATR 走 boarding→pushback→taxiOut→holdShort→cleared→起飛。
@@ -194,7 +196,14 @@ const audio = new GameAudio(); // 音效（先建好，applyEnv 要呼叫 setWea
 // —— 天氣（v3.0-1）+ 生活感/日夜（v3.0-3）：modulate world.js + 後果軸閘 ——
 const weatherRenderer = new WeatherRenderer(scene);
 const weather = makeWeather();
-const airportLife = new AirportLife(scene);   // 停機坪飛機/燈/窗光/風向袋/雷達/車（merged/instanced）
+/** 建目前機場的生活感（per-airport：依跑道方位/長度定向 + 機隊依機場序變化）。 */
+function makeAirportLife() {
+  return new AirportLife(scene, {
+    headingDeg: air.spec.runway.headingDeg, runwayLength: air.runwayLength,
+    variant: Math.max(0, AIRPORT_IDS.indexOf(/** @type {any} */ (curAirportId))),
+  });
+}
+let airportLife = makeAirportLife();   // 停機坪飛機/燈/窗光/風向袋/雷達/車（merged/instanced，per-airport）
 const dayNight = makeDayNight();               // 日夜時段（開場可選；純氛圍）
 /** 套用天氣 × 日夜到場景（compose 一次；天氣 roll、換時段、換後果模式都呼叫）。 */
 function applyEnv() {
@@ -405,6 +414,9 @@ function enableAudio() {
 window.addEventListener('pointerdown', enableAudio);
 window.addEventListener('keydown', enableAudio);
 $('soundHint').style.display = 'block';
+// 分頁切走/隱藏/關閉 → 暫停音訊；切回 → 恢復（HITL 2026-06-21：畫面關掉聲音不再殘留）。
+document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else audio.resume(); });
+window.addEventListener('pagehide', () => audio.suspend());
 
 // —— 設定面板（後果軸三檔 + ❤️ 上限）——
 const settingsEl = $('settings');
@@ -619,8 +631,9 @@ function loadAirport(toId) {
   labels = /** @type {LandmarkLabels} */ (labelCache.get(toId));
   env = air.env; taxi = air.taxi; RWDIR = air.runwayDir;
   clearDeparture(); clearCorridor();
-  arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
-  rollAndApplyWeather(); // 目的地機場天氣 profile（金門霧/澎湖側風…招牌活化）
+  arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null; parkedAt = 0;
+  airportLife.dispose(); airportLife = makeAirportLife(); // 重建生活感：依新機場跑道方位定向 + 機隊變化
+  rollAndApplyWeather(); // 目的地機場天氣 profile（金門霧/澎湖側風…招牌活化）+ applyEnv→airportLife.setNight
 }
 
 /** 武裝巡航：起飛後若有選定航線即由 justTookOff 呼叫。 @param {number} slot */
@@ -1138,16 +1151,18 @@ function spawnFor(slot) {
   return air.spawnPose(slot);
 }
 
-/** 啟動離場流程（ATR spawn-at-gate 後）：登機階段起；與到場互斥。 @param {number} slot */
-function startDeparture(slot) {
+/** 啟動離場流程（spawn-at-gate 後 或 到場過站後）：登機階段起；與到場互斥。
+ *  @param {number} slot @param {string|null} [gate] 指定登機門（過站＝停妥的門；缺省＝slot 預設門） */
+function startDeparture(slot, gate) {
   departPhase = 'boarding'; departSlot = slot;
-  departGate = DEPART_GATES[slot] ?? DEPART_GATES[0];
+  departGate = gate ?? DEPART_GATES[slot] ?? DEPART_GATES[0];
   boardT = 0; pushT = 0; pushPath = null; holdT = 0; boardReady = false; pendingConfirm = false;
   arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
 }
 
 /** 地面 ModeSlot 提示文字：離場 slot 顯示當前離場階段引導，否則「推滿油門起飛」。 @param {number} i */
 function departHintFor(i) {
+  if (arrivalPhase === 'parked') return '🛬 靠橋中…過站準備下一班'; // 過站窗口（避免顯示「推滿油門」誤導撞航廈）
   if (i !== departSlot || departPhase === 'none') return '🛫 推滿油門起飛！';
   switch (departPhase) {
     case 'boarding': return boardReady ? '✅ 確認後推（按 Enter／手機鈕）' : '🛫 登機中…請稍候';
@@ -1267,17 +1282,28 @@ function updateArrival(slot, now, p) {
     const gNode = taxi.nodes.get(arrivalGate);
     if (gNode && isParkedAtGate(states[slot], /** @type {any} */ (gNode), RWDIR)) {
       arrivalPhase = 'parked';
+      parkedAt = now; // 過站計時起點
       groundNav.clear();
       const gateW = nodeWorld(/** @type {any} */ (gNode), RWDIR);
       const termDir = { x: RWDIR.z, z: -RWDIR.x }; // 朝航廈（−lateral）
       groundNav.dock({ x: gateW.x + termDir.x * BRIDGE_LEN, z: gateW.z + termDir.z * BRIDGE_LEN }, gateW);
-      toast(slot, `🛬 停妥靠橋！歡迎抵達松山 ${gNode.label ?? ''}`);
+      toast(slot, `🛬 停妥靠橋！歡迎抵達${air.spec.name} ${gNode.label ?? ''}`);
       audio.landingChime();
       setAtc(atcDocked(gNode.label ?? '登機門', air.spec.name), true);
       audio.atcVoice('Welcome. Thanks for flying with us, see you next time.'); // 站名走顯示 ATC（air.spec.name）；英文 TTS 走通用詞避免唸錯城市（其餘英文 TTS 在地化＝V6 polish）
     }
   }
-  if (arrivalPhase === 'parked') { groundNav.update(DT, p, now); return; } // 停妥：僅跑空橋動畫，ATC 維持「已靠橋」
+  if (arrivalPhase === 'parked') {
+    groundNav.update(DT, p, now); // 跑空橋動畫
+    // 過站轉離場：靠橋後短暫停 → 自動開新一班（登機→確認後推→…），讓航班循環不卡死（HITL 2026-06-21）。
+    if (parkedAt && now - parkedAt > TURNAROUND_MS) {
+      const g = arrivalGate; // 從停妥的這個門出發
+      arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null; parkedAt = 0;
+      startDeparture(slot, /** @type {string|null} */ (g));
+      toast(slot, '🛫 過站完成，準備下一班！');
+    }
+    return;
+  }
   if (arrivalPhase === 'exit' && arrivalExit) { // P1：脫離跑道
     const exitNode = taxi.nodes.get(arrivalExit);
     const exitW = exitNode ? nodeWorld(/** @type {any} */ (exitNode), RWDIR) : null;

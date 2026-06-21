@@ -46,8 +46,9 @@ export class ChaseCam {
     }
     this.cam.position.copy(this._pos);
     this.cam.lookAt(this._look);
-    // 輕微帶一點 bank 的鏡頭傾斜（有臨場感但角度小，減暈）
-    this.cam.rotateZ(s.bank * 0.25);
+    // 輕微帶一點 bank 的鏡頭傾斜（臨場感）；HITL 2026-06-21：傾斜過大→起降「對正」時畫面歪、像偏右後方，
+    // 調小讓地平線更穩、跑道中線好對（相機本就在機尾正後方、無左右偏移）。
+    this.cam.rotateZ(s.bank * 0.12);
     // 亂流微晃（極輕、平滑噪音；shake=0 或關閉＝完全無晃，減暈鐵律）
     if (shake > 0) {
       const t = performance.now() / 1000;

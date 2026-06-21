@@ -10,9 +10,18 @@ import { P } from './flight-model.js';
  * @returns {boolean} 有撞到
  */
 export function collidePlane(s, prevPos, solidAt) {
-  if (s.mode !== 'flying') return false; // 地面只會在跑道區（淨空，無樓）
   const hit = solidAt(s.pos.x, s.pos.z);
-  if (!hit || s.pos.y > hit.h + 1) return false;
+  if (!hit) return false;
+  if (s.mode !== 'flying') {
+    // 地面滑行撞到建築 footprint＝牆：擋住、停住（退回上一安全位置），不爬上屋頂也不穿牆。
+    // HITL 2026-06-21：曾在桃園滑過頭卡在航廈頂無法動。純擋牆、不走 mishap/crash（taxi 速度事件，
+    // 由 checkTaxiOff 導回綠線）；轉/退到沒進 footprint 就能離開。
+    s.pos.x = prevPos.x;
+    s.pos.z = prevPos.z;
+    s.speed = 0;
+    return false;
+  }
+  if (s.pos.y > hit.h + 1) return false;
 
   // 退回安全位置 + 往「離建築中心」方向再推一点
   s.pos.x = prevPos.x;
