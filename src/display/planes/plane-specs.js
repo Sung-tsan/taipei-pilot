@@ -83,6 +83,25 @@ export const PLANE_SPECS = {
     model: { glb: '/models/atr72.glb', lengthM: 27, yaw: 0 },
     unlock: { flightMin: 30, landings: 10 }, // v1.2 解鎖：民航機進階門檻
   },
+  // B737 窄體幹線客機 —— tone ladder 民航中段（本島幹線、載客多、大油箱長航程）。
+  // 機體＝CC0/CC-BY low-poly GLB（§11，runtime 過 normalize）；目前以 a330 的 787 GLB 縮到窄體尺寸代用
+  //（外型代用、玩法不受影響；專屬塗裝/航司＝資產軌缺口，見 POLISH_BACKLOG）。
+  b737: {
+    id: 'b737',
+    name: '🛫 B737',
+    tone: 'airliner',
+    flight: {
+      // 窄體噴射：介於 ATR 與 A330——起飛速度高、極速高、轉彎比 ATR 穩、比 A330 靈活。
+      V_MIN: 35, V_GLIDE: 33, V_ROTATE: 50,
+      V_MAX: 92, V_MAX_GEAR: 68,
+      GROUND_TOP: 58, GROUND_ACCEL: 8, GROUND_DRAG: 5, ACCEL: 8, // GROUND_TOP 必須 > V_ROTATE
+      MAX_BANK: 0.9, BANK_RATE: 2.3, MAX_PITCH: 0.33, PITCH_RATE: 1.0, TURN_G: 14,
+    },
+    dims: { wingspan: 35, minRunwayLength: 1500 }, // 窄體：翼展 ~35m、跑道需求中等
+    fuelSec: 2200, // 大油箱長航程（range≈396km，飛得到所有九機場含金門/馬祖）
+    model: { glb: '/models/a330.glb', lengthM: 38, yaw: Math.PI }, // 787 GLB 縮到窄體尺寸代用（與 A330 同模型、較小）
+    unlock: { flightMin: 45, landings: 15 }, // v1.2 解鎖：介於 ATR 與 A330
+  },
   // A330 廣體客機 —— tone ladder 最仿真端（大、最重、最慢轉、最長跑道）。clean-belly low-poly GLB。
   a330: {
     id: 'a330',
@@ -106,7 +125,7 @@ export const PLANE_SPECS = {
 export const DEFAULT_PLANE = 't34c';
 
 /** 機種清單（給選單/測試列舉，順序＝ tone ladder） */
-export const PLANE_IDS = /** @type {const} */ (['t34c', 'f16', 'atr72', 'a330']);
+export const PLANE_IDS = /** @type {const} */ (['t34c', 'f16', 'atr72', 'b737', 'a330']);
 
 /** @param {string} id @returns {PlaneSpec} 未知 id → 退回預設機（不爆） */
 export function planeSpec(id) {

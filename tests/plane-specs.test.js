@@ -70,11 +70,21 @@ describe('plane-specs 登記', () => {
     expect(a.fuelSec).toBeGreaterThan(atr.fuelSec);
   });
 
-  it('tone ladder：T-34C=cartoon、F-16=combat、ATR-72/A330=airliner', () => {
+  it('tone ladder：T-34C=cartoon、F-16=combat、ATR-72/B737/A330=airliner', () => {
     expect(planeSpec('t34c').tone).toBe('cartoon');
     expect(planeSpec('f16').tone).toBe('combat');
     expect(planeSpec('atr72').tone).toBe('airliner');
+    expect(planeSpec('b737').tone).toBe('airliner');
     expect(planeSpec('a330').tone).toBe('airliner');
+  });
+
+  it('B737（V5.1-2）＝GLB 窄體幹線：airliner、大油箱（> ATR、< A330）、起得來', () => {
+    const b = planeSpec('b737');
+    expect(b.tone).toBe('airliner');
+    expect(isGlbModel(b.model)).toBe(true);
+    expect(b.fuelSec).toBeGreaterThan(planeSpec('atr72').fuelSec); // 大油箱（遠航線靠它）
+    expect(b.fuelSec).toBeLessThan(planeSpec('a330').fuelSec);     // 仍小於廣體
+    expect(flightParams('b737').GROUND_TOP).toBeGreaterThanOrEqual(flightParams('b737').V_ROTATE);
   });
 });
 

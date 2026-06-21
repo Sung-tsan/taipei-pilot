@@ -15,7 +15,7 @@ import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort
 import { CorridorMarkers } from './scene/corridor-markers.js';
 import { GroundService } from './scene/ground-service.js';
 import { makeAirportScene } from './scene/airport-scene.js';
-import { AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, DEMO_AIRPORTS, ROUTES, ROUTE_IDS, routesFrom, routeOtherEnd, routeDistanceKm, airport as airportSpec, mapXY } from './scene/airports.js';
+import { AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, ROUTES, ROUTE_IDS, routesFrom, routeOtherEnd, routeDistanceKm, airport as airportSpec, mapXY } from './scene/airports.js';
 import { makeCruise, stepCruise, cruisePhaseLabel, cruiseEtaSec } from './missions/route-engine.js';
 import { makeFuel, burn, burnRate, fuelFrac, isLow, refuel, canReach, routeFuelCostSec } from './missions/fuel.js';
 import { makePlane, stepPlane } from './flight/flight-model.js';
@@ -251,6 +251,11 @@ function gustAt(t, turb) {
   const n1 = Math.sin(t * 3.1) * 0.6 + Math.sin(t * 7.7 + 1.3) * 0.4;
   const n2 = Math.sin(t * 2.6 + 2) * 0.6 + Math.sin(t * 6.3 + 0.7) * 0.4;
   return { roll: n1 * 0.16 * turb, pitch: n2 * 0.07 * turb }; // 幅度寧可先弱（減暈）
+}
+/** 目前機場的天氣外力（V5.1-2：疊機場招牌側風/亂流倍率——澎湖強側風、花東亂流）。 @returns {{windSpeed:number, turb:number}} */
+function curForces() {
+  const wf = weatherForces(weather.type);
+  return { windSpeed: wf.windSpeed * (air.spec.windScale ?? 1), turb: wf.turb * (air.spec.turbScale ?? 1) };
 }
 /** 套用天氣受損%（接後果軸 damagePct）：跨檻冒煙/墜毀才出聲。 @param {number} i @param {number} pct @param {string} label */
 function applyWeatherDamage(i, pct, label) {
@@ -597,8 +602,8 @@ const PAX = /** @type {Record<string,number>} */ ({ t34c: 2, f16: 1, atr72: 60, 
 /** @param {string} id @returns {number} */
 const paxFor = (id) => PAX[id] ?? 20;
 
-/** 某機場是否本階段可飛（v5.0-1 demo 三場；v5.1-2 解鎖全部）。 @param {string} id */
-const airportUnlocked = (id) => DEMO_AIRPORTS.includes(/** @type {any} */ (id));
+/** 某機場是否可飛（v5.1-2：九機場全 rollout 解鎖；template 已能建任一場）。 @param {string} id */
+const airportUnlocked = (id) => AIRPORT_IDS.includes(/** @type {any} */ (id));
 
 /**
  * 切換目前機場（航網 load/unload）：remove 舊 group、add 新場景、重指 env/taxi/runwayDir、
@@ -1394,7 +1399,7 @@ function loop(/** @type {number} */ now) {
       if (engineOut[i]) input.th = 0; // V5 油盡熄火：引擎死、推力 0 → 滑翔迫降（接 v1.1-2）
       input.landAnywhere = conseq[i].mode === 'real'; // 真實模式：機場外可迫降
       if (conseq[i].mode === 'real' && states[i].mode === 'flying') { // v3.0-2 側風/亂流（只真實模式）
-        const wf = weatherForces(weather.type);
+        const wf = curForces();
         if (wf.windSpeed > 0) input.wind = windVec(wf.windSpeed);
         if (wf.turb > 0) input.gust = gustAt(now / 1000, wf.turb);
       }
@@ -1444,13 +1449,13 @@ function loop(/** @type {number} */ now) {
         }
         if (playMode === 'mission') handleRunnerEvent(i, runner.notify(i, 'landed_runway', { x: states[i].pos.x, z: states[i].pos.z }));
         // v3.0-2 側風劣質著陸：偏離跑道中線/接地過快 → 受損%（真實模式 + 有風才咬）
-        if (conseq[i].mode === 'real' && weatherForces(weather.type).windSpeed > 0) {
+        if (conseq[i].mode === 'real' && curForces().windSpeed > 0) {
           const offsetM = Math.abs(states[i].pos.x * (-RWDIR.z) + states[i].pos.z * RWDIR.x); // 離跑道中線橫距
           applyWeatherDamage(i, crosswindDamagePct({ offsetM, speedMps: states[i].speed }), '側風');
         }
       }
       // v3.0-2 亂流甩出安全包絡 → 受損%（冷卻避免每幀累加；台北輕、磁吸多半接住）
-      if (conseq[i].mode === 'real' && states[i].mode === 'flying' && now > windDamageCd[i] && weatherForces(weather.type).turb > 0) {
+      if (conseq[i].mode === 'real' && states[i].mode === 'flying' && now > windDamageCd[i] && curForces().turb > 0) {
         const pct = turbulenceDamagePct({ bank: states[i].bank, pitch: states[i].pitch });
         if (pct > 0) { windDamageCd[i] = now + 1200; applyWeatherDamage(i, pct, '亂流'); }
       }
@@ -1479,7 +1484,7 @@ function loop(/** @type {number} */ now) {
     planes[i].rollSpin = playMode === 'dogfight' ? dodgeRoll(dodges[i], now) : 0; // 翻滾閃避視覺
     planes[i].sync(states[i], lastInputs[i].th, frame, env.groundY);
     // 亂流鏡頭微晃（只真實模式 + 設定開；安全/溫和或關閉＝0 完全不晃，減暈）
-    const shake = (conseq[i].mode === 'real' && settings.camShake && states[i].mode === 'flying') ? weatherForces(weather.type).turb : 0;
+    const shake = (conseq[i].mode === 'real' && settings.camShake && states[i].mode === 'flying') ? curForces().turb : 0;
     cams[i].update(states[i], frame, shake, camScale);
     views.push(cams[i]);
   }
@@ -1515,7 +1520,7 @@ function loop(/** @type {number} */ now) {
       }
       let altText = `⛰ ${Math.round(s.pos.y)}m　💨 ${Math.round(s.speed * 3.6)}`;
       if (conseq[i].mode === 'real') { // v3.0-2 風向指示（真實模式有風才顯）：箭頭指風來向（相對機頭）
-        const wf = weatherForces(weather.type);
+        const wf = curForces();
         if (wf.windSpeed > 0) {
           const rel = wrapAngle((WIND_FROM_DEG * Math.PI) / 180 - s.heading);
           altText += `　🌬<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span>${wf.windSpeed}`;
@@ -1559,7 +1564,7 @@ function loop(/** @type {number} */ now) {
   if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
-  airportLife.update(frame, (WIND_FROM_DEG * Math.PI) / 180, weatherForces(weather.type).windSpeed); // 雷達轉 + 風向袋對風
+  airportLife.update(frame, (WIND_FROM_DEG * Math.PI) / 180, curForces().windSpeed); // 雷達轉 + 風向袋對風
   refreshMissionWeather(); // 天氣挑戰任務覆寫天氣（只在變更時重套）
 
   if (debugOn) {

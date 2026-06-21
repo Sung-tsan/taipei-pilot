@@ -34,6 +34,9 @@ Append 格式（一行）：
 - [ ] 擬真爆炸真·取樣 clip 待 CC0 drop — V2 音效 — 合成已逼近，待 CC0 音效資產
 - [ ] ATC 真語音 clip / 預生成 TTS — v4.1-2 — 目前＝文字 + 合成無線電 squelch；真語音留 V5（交付明訂）
 - [ ] ATR-72 換純 CC0 客機 GLB（目前 **CC-BY 3.0** 通用噴射客機代用螺旋槳機）— v4.0-1 — 線上查無 CC0 客機（見 public/models/CREDITS.md）；丟 CC0 GLB 進 `public/models/airliner.glb` 即一行替換
+- [ ] B737 專屬窄體 GLB + 航司塗裝（目前與 A330 共用 787 GLB 縮小代用）— v5.1-2 — 外型代用、玩法不受影響；丟窄體 GLB 進 public/models 即換
+- [ ] 機場 props CC0 化（航廈/塔台/招牌地標目前 template voxel）— v5.0-1 — §11 通用件可換 CC0 low-poly；地標可保 voxel
+- [ ] ATC 真語音：V5 已做 grounded bank（文字 + 英文 TTS）；真·取樣無線電 clip 仍待 CC0 — v5.1-1
 
 ### 2. 明示取捨回收（逐項決定：補完 or 接受為最終）
 - [ ] 起飛排序可見的「前面那架」環境離場機 — v4.1-1 — 排序為計時 hold-short + ATC（功能完整）；可見機需 transient 環境機 entity + scripted 起飛（排隊感目前靠 ATC）
@@ -48,6 +51,10 @@ Append 格式（一行）：
 - [ ] 空對地紅區進 airspace.json schema — v2.0-4 — 暫 demo hardcoded
 - [ ] 敵機編隊維持相位 — V3 五修 — 暫用 spawn 編隊+既有追擊散開達成
 - [ ] GLB 民航機 per-slot 識別色（紅/藍機）— v4.0-1 — GLB 用 livery 貼圖、暫無 accent，雙人同機外觀相同
+- [ ] 巡航＝半自動快轉（不渲染跨海 300km）— v5.0-1 — 北極星拍板；真 3D 跨海巡航另議
+- [ ] 機場招牌地標＝手刻 voxel 小件（識別用、非精細地標）— v5.0-1
+- [ ] AirportLife 停機坪生活感仍在世界原點共用（各機場顯松山風擺件，原點即跑道中心尚可）— v5.0-1 — per-airport 化較大工
+- [ ] 航線收集在「飛抵 airspace」點亮（非落地）— v5.0-2 — robust + 可測；如要嚴格「落地才算」再改
 
 ### 3. 跨版本一致性（HUD / 音效個性 / Tactile / voxel×CC0 融合）
 - [ ] HUD 槽位跨所有模式（free/mission/dogfight/race/民航/航網）一致性檢查
@@ -61,7 +68,8 @@ Append 格式（一行）：
 - [ ] 側風 / 亂流幅度 + 暈（v3.0-2，幅度先弱待調）
 - [ ] 敵機難度曲線 / adaptive（v2.0-4，HITL 已調一輪）
 - [ ] 鎖定強度 / 追蹤（v2.0-2）
-- [ ] 油量曲線（v5.0-2）
+- [ ] 油量曲線 / 航程 gate 係數 K=0.18（v5.0-2 fuel.js）— 哪台飛得到哪、油盡迫降緊張感對 6 歲
+- [ ] 招牌天氣強度 windScale/turbScale（v5.1-2 airports.js）— 澎湖強側風 1.9 / 花蓮亂流 1.6 等待真機校
 
 ### 5. 全局效能（最壞場景）
 - [ ] 空戰 + 天氣 + 生活感 + 多機場疊加 perf（雙視口 60fps、draws<300/視口 under worst case）
@@ -69,6 +77,8 @@ Append 格式（一行）：
 ### 6. 教育內容總校（DRAFT 最終校稿）
 - [ ] 各版 facts / 任務 prompt / 天氣任務 / ATC bank 最終校稿總清（適齡 + 正確）
 - [ ] ATC phraseology DRAFT 校稿（`atc-phraseology.js` ATC_DRAFT=true + 空中走廊用語）— v4.1-2 — 擬真+6歲懂，讀給孩子校
+- [ ] **V5 DRAFT 校稿總清**（`handoff/2026-06-21_v5_DRAFT_校稿清單.md`：9 航線 fact + 9 機場招牌文字/天氣倍率 + ATC bank 8×3 變體 + 6 機場天氣機率表）— v5.0-1~5.1-2 — Sung 校審後清各 draft 旗標
+- [ ] 英文 TTS 在地化（各機場跑道號英文/站名）— v5.1-1 — 顯示 ATC 已機場感知；英文語音仍部分松山中心（runway one zero）
 
 ### 7. 首次體驗 onboarding
 - [ ] 6 歲第一次開不被 5 版功能淹沒（模式選單 / 解鎖呈現 / 教學瞬間 holistic）
@@ -86,7 +96,7 @@ Append 格式（一行）：
 ### 10. 代碼精緻度 / 優化精簡（holistic code review）
 > V6 對**全 codebase** 跑一次整體 review（review agents 全掃／`/simplify` 逐 diff；`/code-review` 適合逐 PR）：找重複、死碼、過度複雜、漏掉的重用、可精簡/可優化處。
 > **🔴 鐵律：重構不可破壞手感位元**——這款手感是核心資產，refactor 必須 tests 全綠 + Sung HITL 手感不變（沿用 dev「純加法＋中立預設、位元不變」紀律）。
-- [ ] `src/display/main.js`（**1053 行 god-file**，5 版整合 glue 累積）→ 評估解耦（per-mode controllers／weather·combat·ground glue 抽出）— 掃描 2026-06-15；**待 feature-complete 再拆（現拆白工＋動手感）**
+- [ ] `src/display/main.js`（**~1570 行 god-file**，5 版整合 glue 累積；V5 加航網/巡航/油量/全圖 UI）→ 評估解耦（per-mode controllers／weather·combat·ground·route glue 抽出）— 掃描 2026-06-15，V5 後更大；**feature-complete（V5 達成）後即可拆——V6 維度 10 主目標**
 - [ ] `src/display/combat/dogfight.js`（581 行）→ 戰鬥編排，評估可拆
 - [ ] 全 codebase 重複/死碼/過度複雜掃描（feature-complete 後）
 - [ ] perf 熱點優化（接維度 5 全局效能）

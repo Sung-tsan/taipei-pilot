@@ -40,6 +40,14 @@
 >
 > **★ V4 Sung 雙真機 HITL 全過（2026-06-20）→ 打 tag `taipei-pilot-v4.0`（local）→ 進 V5。** HITL 修：①滑行轉彎半徑（GROUND_TURN_SPEED，ATR/A330 過得了彎）②靠橋對齊航廈（航廈/停機坪加寬、門貼近、橋縮短）③離場提示（ModeSlot 依階段 + 空中走廊任何 ATR 起飛即啟動）④ATC 改自然**英文語音**（瀏覽器 TTS，國際 ATC 本就英文；squelch 柔化，解「電磁音」）⑤**A330 機隊接線**（選單可選 + ATR 換 clean-belly GLB；F-16/T-34C 維持 voxel 保留旋槳/識別色）⑥追焦相機隨機體大小縮放（A330 鏡頭到機尾正後方）⑦A330 yaw=π + GROUND_TOP>V_ROTATE（起得來）。baseline 362 unit / 31 e2e。**仍待（非阻擋出貨）：ATC DRAFT 校稿、yaw/scale 微調、F-16/T-34 GLB 換入（候選已備）。**
 >
+> **V5（航網）全部實作完成（2026-06-21，Opus 開發 session）**（typecheck 0 / **404 unit** / **41 e2e**；DONE：`handoff/2026-06-21_v5.0-1~2_DONE.md` + `2026-06-21_v5.1-1~2_DONE.md`）：
+> **v5.0-1 航網核心**：`airports.js`（9 機場真實經緯度/跑道/weather/terrain/招牌 + 9 航線 + haversine + mapXY 全圖投影）+ `route-engine.js`（雲上巡航狀態機：時間壓縮 22–48s、climb→cruise→descent 半自動、ETA）+ `airport-scene.js` **airport-template**（松山委派 makeTaipei＝v1 美術零動；其餘參數化 template：跑道/航廈/滑行道/地形島海岸山/招牌 voxel 地標）+ taxiway 參數化 + 多機場切換（loadAirport，env/taxi/RWDIR per-airport）+ 🗼台灣全圖選線 modal + 雲上巡航 overlay。
+> **v5.0-2 油量+航班+航網收集**：`fuel.js`（耗油+航程 gate rangeKm/canReach+油低警告+油盡一次性）；本地油盡→引擎熄火接迫降、長航線航程不足→海上迫降返航（複用 v1.1-2）；只真實咬油、安全/溫和無限；載客+準點結算；`collection-store` routes+networkCelebrated；飛抵航線點亮（收集簿航網區）+九航線全通大慶祝。
+> **v5.1-1 真 ATC grounded bank**：`atc-bank.js`（8 階段 grounded 變體 DRAFT + validateVariant 三件套結構驗證 + pickVariant + 固定地板 fallback）+ `atc-phraseology.js` 機場感知（站名走 air.spec.name）+ `scripts/gen-atc-bank.js`（build-time Haiku 生成器，raw fetch、遊戲 runtime 零雲端）。
+> **v5.1-2 收尾**：機隊 **B737**（787 GLB 縮窄體代用 + 大油箱 range≈396km）；**九機場全 rollout**（airportUnlocked 全開）；V3 **招牌天氣活化**（澎湖 windScale 1.9、花蓮 turbScale 1.6、台東/馬祖混合，curForces 疊倍率）；template 機場 perf draws<300 e2e。
+> **取捨（明示，harvest 進 POLISH_BACKLOG）：** 巡航半自動快轉（不渲染跨海 300km）；B737/A330 共用 787 GLB（窄體/航司塗裝＝資產缺口）；ATC bank 為 hand-authored grounded 種子 + 生成器（無 API key 無法此地跑）；AirportLife 仍世界原點共用；英文 TTS 部分松山中心；航程 gate K=0.18 待手感校。
+> **待 Sung：V5 DRAFT 校稿（`handoff/2026-06-21_v5_DRAFT_校稿清單.md`：9 航線 fact + 招牌文字/倍率 + ATC bank + 6 天氣表）+ 雙真機 HITL 全項（全圖選線→巡航→到達不暈／B737-A330 手感／九機場招牌挑戰／油量油盡迫降／九航線全通慶祝／真 ATC 適齡無線電感／不掉幀）→ 清 DRAFT 旗標 → 打 tag `taipei-pilot-v5.0`（＝北極星 V1→V5 全達成；agent 不代簽/不代打 tag）。**
+>
 > **美術方向（2026-06-14，技術評估 session，Sung × Opus）**：**voxel + low-poly 共存**於同一 flat-shaded 玩具視覺。通用件開放 CC0 low-poly 現成、台灣地標與既有 voxel 資產全保留手刻；**無遷移、共存即可從現在生效**，匯入 GLB 須正規化（剝貼圖→flat＋重映色票）。GLB scale/正規化 spike **併入 v4.0 handoff 開頭、不另開 handoff**（V4＝首次大量引入 GLB）。詳見 §11、拍板 §7、gate §9、flag §8。taipei_pilot 與 Flutter「玩具櫃」平台識別無關、視覺自選。**本次只改 canon＋立 gate，不動既有 code。**
 
 ---

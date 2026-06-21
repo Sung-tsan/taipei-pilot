@@ -6,6 +6,7 @@
 | 檔案 | 用途 | 來源 | 授權 | 需標示 |
 |------|------|------|------|--------|
 | `a330.glb` | A330（廣體客機，clean-belly） | Poly Pizza [`/m/fzIXe2paBN9`](https://poly.pizza/m/fzIXe2paBN9)（"Airplane" Boeing 787，Poly by Google，~1100 tris） | **CC-BY 3.0** | **是** |
+| `a330.glb`（共用） | **B737**（窄體幹線，V5.1-2）＝同 787 GLB 縮到 `lengthM:38` 代用（與 A330 同模型、較小尺寸區隔）。專屬窄體 GLB + 航司塗裝＝資產軌缺口（POLISH_BACKLOG） | 同上 | **CC-BY 3.0** | **是** |
 | `atr72.glb` | ATR-72（民航機，clean-belly） | Poly Pizza [`/m/1uXmHq-ELhz`](https://poly.pizza/m/1uXmHq-ELhz)（"Small plane"，Poly by Google，~254 tris） | **CC-BY 3.0** | **是** |
 | `follow-me.glb` | 地面導航「跟我車」/ 地勤車 / pushback 拖車 | Kenney Car Kit 3.1（`sedan`） | **CC0 1.0** | 否（仍致謝） |
 | `Textures/colormap.png` | 上面 Kenney 車的色票（GLB 相對外參，須一起 ship） | Kenney Car Kit 3.1 | **CC0 1.0** | 否 |

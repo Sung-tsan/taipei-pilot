@@ -353,8 +353,8 @@ test('到場全鏈：落地→脫離→指派門→停妥靠橋', async ({ brows
     () => display.evaluate(() => /** @type {any} */ (window).__tp.groundNav.docked),
     { timeout: 8000 },
   ).toBe(true);
-  // 停妥 ATC「已靠橋」
-  await expect(display.locator('#atcBanner')).toContainText('已靠橋');
+  // 停妥 ATC「靠橋」（v5.1-1 起 ATC 走 grounded bank 變體，斷言穩定關鍵詞「靠橋」而非特定句）
+  await expect(display.locator('#atcBanner')).toContainText('靠橋');
   await ctx.close();
 });
 
@@ -857,5 +857,68 @@ test('V5 九航線全通：飛完最後一條 → 大慶祝', async ({ browser }
   // 九航線全通 → 大慶祝 modal 顯示
   await expect(display.locator('#celebration')).toBeVisible();
   await expect(display.locator('#celebTitle')).toContainText('九航線全通');
+  await ctx.close();
+});
+
+// v5.1-2：機隊 B737（窄體幹線，CC0/CC-BY GLB 代用）→ 載入 → 起飛、HUD 顯示 B737。
+test('V5 機隊 B737：GLB 載入 → 起飛、HUD 顯示 B737', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  const errors = /** @type {string[]} */ ([]);
+  display.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#playModeBtn');
+  await display.click('#planeRow [data-plane="b737"]');
+  expect(await display.evaluate(() => /** @type {any} */ (window).__tp.planeId)).toBe('b737');
+  await display.click('#modeMenuClose');
+
+  await display.keyboard.down('Space');
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+  await expect(display.locator('#hud-0 .mode-slot')).toContainText('B737');
+  expect(errors, errors.join('\n')).toEqual([]);
+  await ctx.close();
+});
+
+// v5.1-2：九機場全 rollout——航線圖九機場皆可選（無 🔒）、原鎖定離島（澎湖）現可選。
+test('V5 九機場 rollout：航線圖無鎖、澎湖可選', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.click('#routeMapBtn');
+  await expect(display.locator('#routeMap')).toBeVisible();
+  await expect(display.locator('#routeMapSvg text')).toHaveCount(9);
+  await expect(display.locator('#routeMapSvg')).not.toContainText('🔒'); // 全解鎖（無鎖頭）
+  // 澎湖（原 v5.1-2 才解鎖）現可選 → 出發鈕啟用
+  await display.locator('#routeMapSvg [data-dest="mzg"]').last().click();
+  await expect(display.locator('#routeDepartBtn')).toBeEnabled();
+  await expect(display.locator('#routeList')).toContainText('澎湖');
+  await ctx.close();
+});
+
+// v5.1-2：template 機場（高雄）perf——多機場/地形疊加仍單視口 draws < 300。
+test('V5 perf：高雄（template 機場）draws < 300', async ({ browser }) => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const display = await ctx.newPage();
+  await display.goto('/');
+  await display.waitForFunction(() => /** @type {any} */ (window).__tp?.net.connected);
+
+  await display.evaluate(() => /** @type {any} */ (window).__tp.loadAirport('khh'));
+  await display.keyboard.down('Space'); // 鍵盤駕駛 → 有視口渲染
+  await expect.poll(
+    () => display.evaluate(() => /** @type {any} */ (window).__tp.states[0].mode),
+    { timeout: 60000 },
+  ).toBe('flying');
+  await display.keyboard.up('Space');
+  await expect.poll(() => display.evaluate(() => /** @type {any} */ (window).__tp.drawCalls)).toBeGreaterThan(0);
+  const draws = await display.evaluate(() => /** @type {any} */ (window).__tp.drawCalls);
+  expect(draws).toBeLessThan(300);
   await ctx.close();
 });
