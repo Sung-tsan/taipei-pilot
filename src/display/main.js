@@ -1549,7 +1549,7 @@ function loop(/** @type {number} */ now) {
         const wf = curForces();
         if (wf.windSpeed > 0) {
           const rel = wrapAngle((WIND_FROM_DEG * Math.PI) / 180 - s.heading);
-          altText += `　🌬<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span>${wf.windSpeed}`;
+          altText += `　🌬<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span>${Math.round(wf.windSpeed)}`;
         }
       }
       // V5 油量表：真實＝剩餘%（≤20% 紅字警示）；安全/溫和＝∞（寬鬆）。

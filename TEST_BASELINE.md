@@ -28,6 +28,12 @@
 
 ## 已修的坑（log，不要回退）
 
+- **2026-06-21 V5 雙真機 HITL 第二輪四修（Sung 續玩；第一輪相機沒對到根因）**
+  1. **相機起降難對正、偏右後方**（第一輪只調 bank 傾斜＝沒對到根因）：真因＝追焦**方向落後**——位置阻尼太慢(3.2)，轉彎時相機落在機身側後方＝四分之三斜視。修：位置追 3.2→6、注視點追 5→11（緊跟正後方、plane 恆置中）+ **移除 bank 鏡頭傾斜**（地平線恆水平＝對正最直覺）。`chase-cam.js`。
+  2. **5 號門角度太銳轉不進**（大機如 A330 轉彎半徑大）：`isParkedAtGate` posTol 25→42、headingTol 1.0→1.4、speedTol 1.5→2.0＝靠近門即靠橋，免硬轉死角。`taxiway.js`（taxiway.test 同步更新）。
+  3. **風速顯示浮點殘差**（澎湖 windScale 1.9×3=5.6999999…）：HUD `Math.round(wf.windSpeed)`。`main.js`。
+  4. **各機場（尤其同地形離島）長太像**：招牌地標放大 1.6×、拉近到跑道對側（航廈對面）＝起降/停機坪都看得到的識別物（風車/燈塔/熱氣球/山門各不同）。`airport-scene.js buildSignature`。
+
 - **2026-06-21 V5 雙真機 HITL 第一輪五修（Sung 實玩 V5）**
   1. **過站卡死無法再出發**：到場靠橋後 `arrivalPhase='parked'` 只跑空橋動畫、無「過站轉離場」→ 卡在 gate。修：靠橋後 `TURNAROUND_MS` 過站 → 自動 `startDeparture(slot, 停妥的門)`（登機→確認後推→…），航班循環不卡死。回歸：`到場全鏈` e2e 加 `departure.phase→boarding`。
   2. **滑過頭卡在航廈頂、不能動**（桃園）：`collidePlane` 開頭 `if(mode!=='flying') return false` 假設「地面只在淨空跑道區」→ 地面滑進航廈 footprint 被 `groundY` 抬上 21m 屋頂卡死。修：地面撞建築 footprint＝擋牆（退回上一安全位置 + 停住、不走 mishap），不爬屋頂/不穿牆。回歸：`tests/collision.test.js`。

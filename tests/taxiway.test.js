@@ -154,7 +154,8 @@ describe('松山滑行道網路', () => {
     expect(isParkedAtGate(at(0, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(true);        // 正停妥
     expect(isParkedAtGate(at(0, 0, pose.heading + 0.7, 0), node, RUNWAY_DIR)).toBe(true);  // 斜進 ~40° 仍算
     expect(isParkedAtGate(at(0, 0, pose.heading, 8), node, RUNWAY_DIR)).toBe(false);       // 還在動
-    expect(isParkedAtGate(at(40, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(false);      // 離門太遠
+    expect(isParkedAtGate(at(38, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(true);       // 大機靠近即靠橋（HITL 2026-06-21：posTol 放寬到 42）
+    expect(isParkedAtGate(at(70, 0, pose.heading, 0), node, RUNWAY_DIR)).toBe(false);      // 離門太遠
     expect(isParkedAtGate(at(0, 0, pose.heading + Math.PI, 0), node, RUNWAY_DIR)).toBe(false); // 背對
     expect(isParkedAtGate(at(0, 0, pose.heading + Math.PI / 2, 0), node, RUNWAY_DIR)).toBe(false); // 側對
   });

@@ -39,16 +39,14 @@ export class ChaseCam {
       this._look.copy(targetLook);
       this._init = true;
     } else {
-      const k = expDamp(3.2, dt);  // 重阻尼：位置慢慢追
-      const kl = expDamp(5.0, dt); // 注視點稍快（轉彎先看見方向）
-      this._pos.lerp(targetPos, k);
-      this._look.lerp(targetLook, kl);
+      // HITL 2026-06-21 第二輪：起降/轉彎「對正」——相機要緊跟「正後方」。原本位置追太慢(3.2)→轉彎時
+      // 相機落在機身側後方＝四分之三斜視（看起來偏右後）。位置追快一點 + 注視點貼機身（plane 恆置中）。
+      this._pos.lerp(targetPos, expDamp(6.0, dt));
+      this._look.lerp(targetLook, expDamp(11.0, dt));
     }
     this.cam.position.copy(this._pos);
     this.cam.lookAt(this._look);
-    // 輕微帶一點 bank 的鏡頭傾斜（臨場感）；HITL 2026-06-21：傾斜過大→起降「對正」時畫面歪、像偏右後方，
-    // 調小讓地平線更穩、跑道中線好對（相機本就在機尾正後方、無左右偏移）。
-    this.cam.rotateZ(s.bank * 0.12);
+    // 不再隨 bank 傾斜鏡頭（地平線恆水平）→ 起降對正最直覺、減暈；亂流微晃仍保留（下方 shake）。
     // 亂流微晃（極輕、平滑噪音；shake=0 或關閉＝完全無晃，減暈鐵律）
     if (shake > 0) {
       const t = performance.now() / 1000;

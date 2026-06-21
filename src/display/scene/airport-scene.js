@@ -235,10 +235,12 @@ function buildSignature(group, spec, W) {
   };
   const d = DEFS[spec.id];
   if (!d) return null;
-  // 放在跑道側邊開闊處（lateral 正側、along 偏一端），不擋跑道/航廈。
-  const along = -spec.runway.lengthM * 0.18;
-  const lateral = spec.runway.widthM / 2 + 380;
+  // 放在跑道對側開闊處（lateral 正側＝航廈對面），起降/在停機坪都看得到＝每場的識別地標。
+  // HITL 2026-06-21：放大 + 拉近，讓各機場差異看得出來。
+  const along = -spec.runway.lengthM * 0.1;
+  const lateral = spec.runway.widthM / 2 + 230;
   const geo = buildVoxelGeometry(d);
+  geo.scale(1.6, 1.6, 1.6); // 放大＝醒目（各場不同剪影：風車/燈塔/熱氣球/山門…）
   const mesh = new THREE.Mesh(geo, voxelMaterial());
   // local→group：沿 +X=along、+Z=lateral（group 整體旋轉到真實方位）。
   mesh.position.set(along, 0, lateral);

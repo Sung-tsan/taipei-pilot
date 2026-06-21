@@ -292,8 +292,8 @@ export function gateParkPose(gateNode, runwayDir) {
  * @returns {boolean}
  */
 export function isParkedAtGate(plane, gateNode, runwayDir, opts = {}) {
-  // 容差偏寬（6 歲）：飛機沿 apron→gate 斜進，朝向約 ±45° 仍算 nose-in；只擋「背對/側對」。
-  const { posTol = 25, headingTol = 1.0, speedTol = 1.5 } = opts;
+  // 容差偏寬（6 歲 + 大機如 A330 轉彎半徑大）：靠近門即靠橋，免得要硬轉死角（HITL 2026-06-21：5 號門角度太銳轉不進）。
+  const { posTol = 42, headingTol = 1.4, speedTol = 2.0 } = opts;
   if (plane.speed > speedTol) return false;
   const pose = gateParkPose(gateNode, runwayDir);
   if (Math.hypot(plane.pos.x - pose.x, plane.pos.z - pose.z) > posTol) return false;
