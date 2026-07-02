@@ -4,7 +4,7 @@
 // 純路徑數學在 path-follow.js（已測）；本檔只把它接上 Three（glue，瀏覽器/e2e 驗）。
 import * as THREE from 'three';
 import { loadToyModel } from '../assets/glb-model.js';
-import { followPose, pointAtDistance, polylineLength, nearestDistance } from './path-follow.js';
+import { filletPolyline, followPose, pointAtDistance, polylineLength, nearestDistance } from './path-follow.js';
 
 const CAR_GLB = '/models/follow-me.glb';
 const CAR_LEN = 4.6;       // 跟我車目標長度（Kenney sedan）
@@ -63,7 +63,9 @@ export class GroundNav {
    * @param {{x:number,z:number}[]} worldPoints @param {string} [label]
    */
   setRoute(worldPoints, label = '') {
-    this._route = Array.isArray(worldPoints) ? worldPoints.filter(Boolean) : [];
+    // v5.2-2：轉角圓弧化統一在入口做（taxiway 節點直連是 90° 硬轉角 → 綠線「歪歪的」）。
+    // 下游（燈/跟我車/越界偵測）全吃平滑後折線，轉角處的越界判定也更貼真實滑行線。
+    this._route = filletPolyline(Array.isArray(worldPoints) ? worldPoints.filter(Boolean) : []);
     this._label = label;
     this.active = this._route.length >= 2;
     this._buildLights();
@@ -117,7 +119,7 @@ export class GroundNav {
     let idx = 0;
     for (let i = 0; i < n && idx < MAX_LIGHTS; i++) {
       const p = pointAtDistance(this._route, (i / (n - 1)) * total);
-      m.makeTranslation(p.x, 0.4, p.z);
+      m.makeTranslation(p.x, 0.6, p.z); // v5.2-2：0.4 → 0.6 防與地坪 z-fighting
       this._lights.setMatrixAt(idx++, m);
     }
     this._lights.count = idx;

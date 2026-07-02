@@ -48,6 +48,61 @@ export function pointAtDistance(pts, d) {
 export function segHeading(a, b) { return Math.atan2(b.x - a.x, -(b.z - a.z)); }
 
 /**
+ * 折線轉角圓弧化（fillet；v5.2-2「導航線拉直」）。
+ * taxiway 節點直連是 90° 硬轉角（HITL：綠線「歪歪的」）——本函式把每個轉角 > minAngle 的頂點
+ * 換成內切圓弧的取樣點，輸出仍是折線（{x,z} 點列），pointAtDistance / followPose 等下游零改動。
+ * 切線距夾在相鄰段長的一半內（兩個近轉角不互吃）；半徑隨之自動縮。純函式、無副作用。
+ * @param {P2[]} pts 原折線
+ * @param {number} [radius] 目標圓角半徑（m）
+ * @param {number} [minAngleRad] 低於此轉角不圓化（近直線不加點）
+ * @returns {P2[]} 圓角化後折線（點數 ≥ 原折線；輸入 < 3 點原樣回傳副本）
+ */
+export function filletPolyline(pts, radius = 26, minAngleRad = (25 * Math.PI) / 180) {
+  if (!Array.isArray(pts)) return [];
+  if (pts.length < 3) return pts.map((p) => ({ x: p.x, z: p.z }));
+  const ARC_STEP = (12 * Math.PI) / 180; // 弧取樣角步（≈每 12° 一點）
+  /** @type {P2[]} */
+  const out = [{ x: pts[0].x, z: pts[0].z }];
+  /** 推點並去重（兩個近轉角相接時 P2/P1 重合 → 零長段會弄壞 heading）。 @param {P2} p */
+  const push = (p) => {
+    const last = out[out.length - 1];
+    if (Math.hypot(p.x - last.x, p.z - last.z) > 1e-6) out.push(p);
+  };
+  for (let i = 1; i < pts.length - 1; i++) {
+    const A = pts[i - 1], B = pts[i], C = pts[i + 1];
+    const l1 = Math.hypot(B.x - A.x, B.z - A.z);
+    const l2 = Math.hypot(C.x - B.x, C.z - B.z);
+    if (l1 < 1e-6 || l2 < 1e-6) continue; // 零長段：跳過重複點
+    const v1 = { x: (B.x - A.x) / l1, z: (B.z - A.z) / l1 };
+    const v2 = { x: (C.x - B.x) / l2, z: (C.z - B.z) / l2 };
+    const dot = Math.min(1, Math.max(-1, v1.x * v2.x + v1.z * v2.z));
+    const turn = Math.acos(dot); // 轉角（0=直線、π=回頭）
+    if (turn < minAngleRad || turn > Math.PI - 0.05) {
+      push({ x: B.x, z: B.z }); // 近直線或近回頭（無法內切）：保留原頂點
+      continue;
+    }
+    // 切線距 t = r·tan(turn/2)，夾相鄰段半長；半徑隨夾後 t 反推（近轉角自動縮小圓角）。
+    const tanHalf = Math.tan(turn / 2);
+    const t = Math.min(radius * tanHalf, l1 / 2, l2 / 2);
+    const r = t / tanHalf;
+    const P1 = { x: B.x - v1.x * t, z: B.z - v1.z * t }; // 入弧點
+    const P2 = { x: B.x + v2.x * t, z: B.z + v2.z * t }; // 出弧點
+    const s = Math.sign(v1.x * v2.z - v1.z * v2.x) || 1; // 轉向（x-z 平面叉積）
+    const center = { x: P1.x - s * v1.z * r, z: P1.z + s * v1.x * r };
+    const n = Math.max(1, Math.ceil(turn / ARC_STEP));
+    const a0 = Math.atan2(P1.z - center.z, P1.x - center.x);
+    push(P1);
+    for (let j = 1; j < n; j++) {
+      const a = a0 + s * turn * (j / n);
+      push({ x: center.x + Math.cos(a) * r, z: center.z + Math.sin(a) * r });
+    }
+    push(P2);
+  }
+  push({ x: pts[pts.length - 1].x, z: pts[pts.length - 1].z });
+  return out;
+}
+
+/**
  * 點 p 投影到折線後「沿線距起點」的距離（玩家走多遠了）。
  * @param {P2[]} pts @param {P2} p @returns {number}
  */
