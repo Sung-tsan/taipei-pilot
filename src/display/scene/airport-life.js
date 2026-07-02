@@ -8,8 +8,8 @@ import { buildVoxelGeometry, voxelMaterial } from '../../voxel/build.js';
 import { t34cBody } from '../../voxel/models/t34c.js';
 import { f16Body } from '../../voxel/models/f16.js';
 
-/** 簡易客機 voxel（停機坪變化用；比 T-34C 大、有垂尾，剪影明顯不同）。 */
-const airlinerBody = {
+/** 簡易客機 voxel（停機坪變化用；比 T-34C 大、有垂尾，剪影明顯不同）。export 供排隊環境機（v5.2）複用。 */
+export const airlinerBody = {
   scale: 1,
   palette: { A: '#d8d8d8', W: '#eef2f6', T: '#33405e' },
   boxes: /** @type {(string|number)[][]} */ ([
