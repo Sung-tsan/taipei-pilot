@@ -57,10 +57,12 @@ Append 格式（一行）：
 - [ ] 航線收集在「飛抵 airspace」點亮（非落地）— v5.0-2 — robust + 可測；如要嚴格「落地才算」再改
 
 ### 3. 跨版本一致性（HUD / 音效個性 / Tactile / voxel×CC0 融合）
-- [ ] HUD 槽位跨所有模式（free/mission/dogfight/race/民航/航網）一致性檢查
+- [x] Combat HUD 細節（weaponText/scoreText 更簡潔 + ⏳ / 回機場；reticle searching 態）— 2026-06 細節打磨
+- [ ] HUD 槽位跨所有模式（free/mission/dogfight/race/民航/航網）一致性檢查（持續）
 - [ ] 音效個性 tone ladder 一致（教練卡通→戰鬥擬真→民航仿真）
 - [ ] Tactile / haptic 政策跨版本一致
 - [ ] voxel × CC0 low-poly 色票重映一致（各機隊/機場 GLB 進來後總檢，§11 主槓桿）
+- [x] Combat reticle：無鎖定時 searching 虛線小態 + 鎖定紅脈動追蹤（細節打磨）
 - [ ] GLB 降飽和/偏暖強度 + 跟我車朝向微調 — v4.0-1 — ATR 機鼻朝向已修(yaw=π，HITL 2026-06-16)；saturation/warm 預設值堪用、跟我車 yaw 待真機確認
 
 ### 4. 手感終調（旋鈕一次跟孩子調）
@@ -82,7 +84,9 @@ Append 格式（一行）：
 - [ ] 英文 TTS 在地化（各機場跑道號英文/站名）— v5.1-1 — 顯示 ATC 已機場感知；英文語音仍部分松山中心（runway one zero）
 
 ### 7. 首次體驗 onboarding
-- [ ] 6 歲第一次開不被 5 版功能淹沒（模式選單 / 解鎖呈現 / 教學瞬間 holistic）
+- [x] 空戰首次進入教學 toast 強化（手機 🔥發射 / 🎯換武器 / 🌀翻滾 + 鎖定說明）— 2026-06 細節打磨
+- [ ] 6 歲第一次開不被 5 版功能淹沒（模式選單 / 解鎖呈現 / 教學瞬間 holistic）（combat 線已補強）
+- [x] 玩法與機種記住上次選擇（localStorage）— 雙線產品重複玩友好
 
 ### 8. 設定總成
 - [ ] 後果軸 / ❤️ 上限 / 鏡頭晃 / remote 簡單複雜 / 日夜 / 天氣… 旋鈕整合成連貫一頁
@@ -91,7 +95,8 @@ Append 格式（一行）：
 - [ ] 入場 transition
 - [ ] 各模式表面層次
 - [ ] 微互動（滾筒翻特技手感等）
-- [ ] GLB 民航機完整起落架收放（含支柱）— v4.0-1 — 此 CC-BY 模型 3 根支柱烤進機身網格(Airplane1 單一 mesh)、無法單獨隱藏；目前**恆放下**(gearDown 速度上限仍生效)。真收放需 separable-gear 或無支柱的模型（連動「換純 CC0 客機 GLB」項）
+- [x] GLB 民航機起落架視覺收放 — v5.2-4 — clean-belly GLB + **參數化 voxel 假輪組**（plane-entity `_buildGlbGear`，同 voxel 機 scale.y 收放；機身抬輪高、停機站輪上）。spike 已驗：現役/candidates GLB 皆無 separable gear node（方案 A 不可行）
+- [ ] GLB 民航機「真·建模輪組」（艙門/收放細節動畫）— v5.2-4 — 假輪組已解視覺收放；真輪組＝separable-gear GLB 資產缺口（連動「換純 CC0 客機 GLB」項）
 - [ ] （對應 DESIGN_CRAFT_GUIDE Phase-2 backlog 的 web 版）
 
 ### 10. 代碼精緻度 / 優化精簡（holistic code review）

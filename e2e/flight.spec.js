@@ -390,7 +390,8 @@ test('空中走廊：ATR 起飛 → 走廊啟用 + 航點推進', async ({ brows
   ).toBe('flying');
   await display.keyboard.up('Space');
 
-  // 起飛 → 空中走廊啟用（idx 0，leg=climb）
+  // v5.2-2：起飛後爬過 CORRIDOR_START_ALT(60m) 才開走廊（不再同幀瞬切）→ 先抬高度再驗啟用
+  await display.evaluate(() => { /** @type {any} */ (window).__tp.states[0].pos.y = 80; });
   await expect.poll(
     () => display.evaluate(() => /** @type {any} */ (window).__tp.corridor.active),
     { timeout: 10000 },

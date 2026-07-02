@@ -11,7 +11,7 @@ import { makeDayNight, dayNightParams, TIMES_OF_DAY } from './weather/daynight.j
 import { crosswindDamagePct, turbulenceDamagePct } from './flight/wind-damage.js';
 import { AirportLife } from './scene/airport-life.js';
 import { patternPoints, advanceCorridor, corridorAtc } from './scene/air-corridor.js';
-import { atcBoarding, atcBoardComplete, atcPushback, atcTaxiToHold, atcHoldShort, atcCleared, atcExit, atcTaxiToGate, atcDocked } from './scene/atc-phraseology.js';
+import { atcBoarding, atcBoardComplete, atcPushback, atcPushDone, atcTaxiToHold, atcPrepareHold, atcHoldShortCount, atcCleared, atcExit, atcTaxiToGate, atcDocked } from './scene/atc-phraseology.js';
 import { CorridorMarkers } from './scene/corridor-markers.js';
 import { GroundService } from './scene/ground-service.js';
 import { makeAirportScene } from './scene/airport-scene.js';
@@ -112,9 +112,9 @@ const runner = new MissionRunner(MAX_SLOTS, {
   riverRings: (name, count) => { const r = riverByName.get(name); return r ? ringsAlongRiver(r.points, count) : []; },
   collection,
 });
-let playMode = 'mission'; // free / mission / dogfight / race（v2.0-1 起四模式，選單見下）
-let dogfightMode = 'balloons'; // 空戰子模式 balloons/pvp/ai_1v1/ai_2v2（v2.0-1 佔位，內容後階段填）
-let planeId = DEFAULT_PLANE;    // 目前機種（v2.0-1：T-34C / F-16 可選；v1.2 接時數+里程碑解鎖）
+let playMode = localStorage.getItem('tp_last_playMode') || 'mission'; // 記住上次玩法（雙線產品友好）；首次預設＝任務（與 e2e/spec 既定預設一致）
+let dogfightMode = 'balloons';
+let planeId = localStorage.getItem('tp_last_plane') || DEFAULT_PLANE;
 let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 
 // —— 空戰（v2.0-2）：氣球靶 + 武器 + 對地紅區 ——
@@ -149,11 +149,17 @@ let pushT = 0;             // pushback 進度 0..1
 /** @type {{from:{x:number,z:number}, to:{x:number,z:number}, h0:number, h1:number}|null} */
 let pushPath = null;        // pushback 起終姿態（scripted 後推）
 let holdT = 0;             // hold-short 排序計時（秒）
+let pushDoneT = 0;         // v5.2-2 後推完成緩衝計時（拍點：宣告交還操控，不再同幀鬆手）
+let prepHoldSaid = false;  // v5.2-2 「接近等待點」預告只念一次
+let pendingCorridorSlot = -1; // v5.2-2 起飛後等爬升到 CORRIDOR_START_ALT 才開空中走廊（不同幀瞬切）
 let boardReady = false;     // 登機完成、等玩家確認後推
 let pendingConfirm = false;  // 確認鍵脈衝閂鎖（Enter / 遙控器；physics loop 設、離場流程取走）
 let departKeysActive = false; // 是否已把遙控器切到「確認後推」子模式（避免重複廣播）
 const BOARD_SEC = 4;        // 登機動畫長（短可愛）
 const PUSH_SEC = 3.2;       // pushback 推出時長
+const PUSH_DONE_SEC = 0.8;  // v5.2-2 後推完成 → 交還操控前的拍點（ATC 宣告、飛機定住）
+const PREP_HOLD_M = 140;    // m v5.2-2 接近等待點預告距離（< ARRIVAL_REACH_M 才真轉階段）
+const CORRIDOR_START_ALT = 60; // m v5.2-2 起飛後爬過此高度才開空中走廊
 const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
 const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY10，與 spawnPose 起飛朝向一致）
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
@@ -201,6 +207,7 @@ function makeAirportLife() {
   return new AirportLife(scene, {
     headingDeg: air.spec.runway.headingDeg, runwayLength: air.runwayLength,
     variant: Math.max(0, AIRPORT_IDS.indexOf(/** @type {any} */ (curAirportId))),
+    fleetCount: air.spec.tier === 'intro' ? 6 : air.spec.tier === 'expert' ? 2 : 4, // v5.2-3 大場熱鬧、離島清冷
   });
 }
 let airportLife = makeAirportLife();   // 停機坪飛機/燈/窗光/風向袋/雷達/車（merged/instanced，per-airport）
@@ -507,6 +514,7 @@ function renderModeMenuUI() {
 /** 套用玩法模式到所有在線 slot（切 HUD 契約 + 任務啟停 + 空戰靶場 + 廣播給 remote） @param {string} mode */
 function applyPlayMode(mode) {
   playMode = mode;
+  localStorage.setItem('tp_last_playMode', playMode);
   renderModeBtn();
   if (playMode === 'dogfight') { dogfight.setMode(dogfightMode); resetAiProgress(); } // 設子模式旗標（balloons/pvp/ai）
   dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球/敵機或清場打玩家
@@ -518,7 +526,11 @@ function applyPlayMode(mode) {
     if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
     else hud.setTask(i, '');
     if (playMode === 'dogfight') {
-      toast(i, dogfightTaught ? '🔥 空戰開始！' : '🎯 飛近目標→準星變紅鎖定→按發射！'); // 首次教學一次性
+      if (!dogfightTaught) {
+        toast(i, '🔥 空戰！手機：🔥長按發射　🎯切武器　🌀翻滾閃避\n飛近自動鎖定，準星紅＝可打');
+      } else {
+        toast(i, '🔥 空戰開始！');
+      }
     } else if (playMode === 'race') toast(i, raceType === 'landmark' ? '🏁 衝到綠圈（101）最快者贏！' : '🏁 依序穿過金圈、最後綠圈＝終點！');
   }
   if (playMode === 'dogfight') dogfightTaught = true; // 之後只報「空戰開始」
@@ -527,6 +539,7 @@ function applyPlayMode(mode) {
 /** 換機種：重建所有 plane voxel（保留 slot 色/收放狀態）。HUD 機種名每 frame 自動更新。 @param {string} id */
 function setPlane(id) {
   planeId = PLANE_IDS.includes(/** @type {any} */ (id)) ? id : DEFAULT_PLANE;
+  localStorage.setItem('tp_last_plane', planeId);
   planes.forEach((p) => p.setModel(planeSpec(planeId).model));
   for (let i = 0; i < MAX_SLOTS; i++) resetFuel(i); // 換機＝換油箱（新機種 fuelSec）
 }
@@ -973,7 +986,11 @@ function updateDogfight(now) {
       continue;
     }
     const inp = lastInputs[i];
-    if (inp.weaponSwitch && !prevSwitchBit[i]) toast(i, `🔁 ${dogfight.cycleWeapon(i)}`); // 換武器（上升緣循環）
+    if (inp.weaponSwitch && !prevSwitchBit[i]) {
+      const wname = dogfight.cycleWeapon(i);
+      toast(i, `🔁 ${wname}`);
+      audio.weaponFire('cartoon'); // 微弱切換提示（不干擾主要射擊音）
+    } // 換武器（上升緣循環）
     prevSwitchBit[i] = !!inp.weaponSwitch;
     // 翻滾閃避（上升緣觸發、冷卻內忽略）：拔掉咬著自己的飛彈鎖 + 視覺滾筒翻 + 橫向 jink。
     if (inp.dodge && !prevDodgeBit[i] && dodgeReady(dodges[i], now)
@@ -1098,7 +1115,10 @@ function raceHudText(i, s, now) {
   return `${lead}⏱ ${t}s　${prog}`;
 }
 
-/** 瞄準框（每視口一個）：空戰飛行時顯示，平常置中、鎖到目標就投影到目標螢幕位置。 @param {number} i */
+/** 瞄準框（每視口一個）：空戰飛行時顯示。
+ * 無鎖定時置中偏小（搜尋態），鎖定後投影追目標 + locked 脈動。
+ * @param {number} i
+ */
 function updateReticle(i) {
   const el = reticleEls[i];
   if (!el) return;
@@ -1106,10 +1126,26 @@ function updateReticle(i) {
   if (!show) { el.style.display = 'none'; return; }
   el.style.display = 'block';
   const tp = dogfight.targetPos(dogfight.lockId[i]);
-  if (!tp) { el.classList.remove('locked'); el.style.left = '50%'; el.style.top = '50%'; return; } // 無鎖定＝置中
+  if (!tp) {
+    el.classList.remove('locked');
+    el.classList.add('searching');
+    el.style.left = '50%';
+    el.style.top = '50%';
+    el.style.transform = 'translate(-50%, -50%) scale(0.7)';
+    return;
+  }
   _reticleVec.set(tp.x, tp.y, tp.z).project(cams[i].cam);
-  if (_reticleVec.z > 1) { el.classList.remove('locked'); el.style.left = '50%'; el.style.top = '50%'; return; } // 在相機後方
+  if (_reticleVec.z > 1) {
+    el.classList.remove('locked');
+    el.classList.add('searching');
+    el.style.left = '50%';
+    el.style.top = '50%';
+    el.style.transform = 'translate(-50%, -50%) scale(0.7)';
+    return;
+  }
+  el.classList.remove('searching');
   el.classList.add('locked');
+  el.style.transform = '';
   el.style.left = `${Math.max(3, Math.min(97, (_reticleVec.x * 0.5 + 0.5) * 100))}%`;
   el.style.top = `${Math.max(3, Math.min(97, (-_reticleVec.y * 0.5 + 0.5) * 100))}%`;
 }
@@ -1157,6 +1193,7 @@ function startDeparture(slot, gate) {
   departPhase = 'boarding'; departSlot = slot;
   departGate = gate ?? DEPART_GATES[slot] ?? DEPART_GATES[0];
   boardT = 0; pushT = 0; pushPath = null; holdT = 0; boardReady = false; pendingConfirm = false;
+  pushDoneT = 0; prepHoldSaid = false; pendingCorridorSlot = -1;
   arrivalPhase = 'none'; arrivalExit = null; arrivalGate = null; gnGate = null;
 }
 
@@ -1176,6 +1213,7 @@ function departHintFor(i) {
 /** 結束離場流程（起飛/換機/重生）。 */
 function clearDeparture() {
   departPhase = 'none'; departGate = null; departSlot = -1; pushPath = null; boardReady = false;
+  pushDoneT = 0; prepHoldSaid = false;
   groundService.clear();
   if (departKeysActive) { departKeysActive = false; net.sendMode(playMode); } // 還原遙控器 context 鍵
 }
@@ -1187,7 +1225,7 @@ function startDepartCorridor(slot) {
 }
 
 /** 收空中走廊（落地/換機/重生）。 */
-function clearCorridor() { corridorActive = false; corridorSlot = -1; corridorIdx = 0; corridorMarkers.clear(); }
+function clearCorridor() { corridorActive = false; corridorSlot = -1; corridorIdx = 0; corridorMarkers.clear(); pendingCorridorSlot = -1; }
 
 /**
  * 空中走廊每幀：airborne ATR → 推進航點、放穿越環、ATC 指引（離場/近場/進場）。
@@ -1359,15 +1397,22 @@ function updateDeparture(slot, now, p) {
       states[slot].heading = wrapAngle(pushPath.h0 + dh * e);
       states[slot].speed = 0; states[slot].mode = 'rolling';
     }
-    setAtc(atcPushback(gLabel, air.spec.name), true);
-    if (pushT >= 1) { departPhase = 'taxiOut'; gnGate = null; groundService.clear(); } // 後推完成 → 收地勤車
+    // v5.2-2 過渡拍點：後推到位後先「宣告交還操控」再放手（原本同幀鬆手＝卡住再鬆開感）。
+    if (pushT >= 1) {
+      if (pushDoneT === 0) { setAtc(atcPushDone(air.spec.name), true); audio.atcVoice('Pushback complete. You have control. Taxi when ready.'); }
+      pushDoneT += DT;
+      if (pushDoneT >= PUSH_DONE_SEC) { departPhase = 'taxiOut'; gnGate = null; groundService.clear(); } // 拍點結束 → 收地勤車、交還操控
+    } else {
+      setAtc(atcPushback(gLabel, air.spec.name), true);
+    }
     return;
   }
   if (departPhase === 'taxiOut') {
     const holdId = DEPART_RWY === 'r28' ? 'h28' : 'h10';
     const holdNode = taxi.nodes.get(holdId);
     const holdW = holdNode ? nodeWorld(/** @type {any} */ (holdNode), RWDIR) : null;
-    if (holdW && Math.hypot(holdW.x - p.x, holdW.z - p.z) < ARRIVAL_REACH_M) {
+    const holdDist = holdW ? Math.hypot(holdW.x - p.x, holdW.z - p.z) : Infinity;
+    if (holdDist < ARRIVAL_REACH_M) {
       departPhase = 'holdShort'; holdT = 0; groundNav.clear();
       audio.atcVoice('Hold short runway one zero. One aircraft ahead departing.');
     } else if (!groundNav.active || gnGate !== holdId) {
@@ -1379,14 +1424,21 @@ function updateDeparture(slot, now, p) {
       audio.atcVoice('Taxi to runway one zero holding point. Follow the green lights.');
     }
     groundNav.update(DT, p, now);
-    setAtc(groundNav.atcText, true);
+    // v5.2-2 過渡預告：接近等待點先提醒減速（原本 70m 內瞬間切階段＝突兀）。
+    if (holdDist < PREP_HOLD_M) {
+      if (!prepHoldSaid) { prepHoldSaid = true; audio.atcVoice('Approaching holding point. Slow down.'); }
+      setAtc(atcPrepareHold(rwyLabel, air.spec.name), true);
+    } else {
+      setAtc(groundNav.atcText, true);
+    }
     checkTaxiOff(slot, p, now); // 離場 taxi 也吃越界
     return;
   }
   if (departPhase === 'holdShort') {
     if (groundNav.active) groundNav.clear();
     holdT += DT;
-    if (holdT < SEQ_SEC) setAtc(atcHoldShort(rwyLabel, air.spec.name), true);
+    // v5.2-2：排隊倒數（原本靜止傻等 5 秒 → 突然開始）。radio=false：文字每秒變、不重複咔。
+    if (holdT < SEQ_SEC) setAtc(atcHoldShortCount(rwyLabel, air.spec.name, SEQ_SEC - holdT), false);
     else {
       departPhase = 'cleared'; gnGate = null;
       setAtc(atcCleared(rwyLabel, air.spec.name), true);
@@ -1457,7 +1509,12 @@ function loop(/** @type {number} */ now) {
         // V5 航線飛行：起飛時若已選定航線 → 進雲上巡航（任何機種；取代本場 traffic pattern）。
         if (selectedRoute && cruiseSlot < 0) beginCruise(i);
         // 否則民航機起飛接本場空中走廊（HITL 2026-06-20：確保空中指引一定出現）。
-        else if (isCivil(planeId)) { clearDeparture(); startDepartCorridor(i); }
+        // v5.2-2：不再同幀瞬切——先清離場、等爬過 CORRIDOR_START_ALT 才開走廊（初段爬升留一個安靜拍點）。
+        else if (isCivil(planeId)) { clearDeparture(); pendingCorridorSlot = i; }
+      }
+      if (pendingCorridorSlot === i && states[i].mode === 'flying' && states[i].pos.y > CORRIDOR_START_ALT) {
+        pendingCorridorSlot = -1;
+        startDepartCorridor(i);
       }
       if (states[i].justLanded) {
         toast(i, '降落成功！👏'); audio.landingChime();
