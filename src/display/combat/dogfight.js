@@ -37,7 +37,11 @@ const ENEMY_SPAWN_DIST = 3000;    // m 編隊 spawn 距離（遠方進場）
 const ENEMY_SPAWN_ARC_RAD = (55 * Math.PI) / 180; // spawn 方向落在玩家機頭 ±55° 內（看得到、瞄得到）
 const ENEMY_FORMATION_GAP = 150;  // m 編隊橫向間距
 const ENEMY_FORMATION_BACK = 80;  // m V 字外側後退量（每道）
-const ENEMY_ALT = 320;            // m 敵機巡航高度
+const ENEMY_ALT = 320;            // m 敵機巡航高度（無在飛玩家時的 fallback）
+// v5.2-1：spawn 高度跟隨玩家（HITL：固定 320m 遠低於玩家 → 永遠俯角交戰、咬不到側影）。
+const ENEMY_ALT_JITTER = 200;     // m spawn 高度相對玩家平均的 ± 抖動
+const ENEMY_ALT_MIN = 300;        // m spawn 高度下限（不貼地）
+const ENEMY_ALT_MAX = 1200;       // m spawn 高度上限
 const ENEMY_STRENGTH_MIN = 0.55;  // 隨機強度下限（弱兵）
 const ENEMY_STRENGTH_SPAN = 0.8;  // 隨機強度跨度（上限 ≈ 1.35＝王牌）
 const AI_COUNT = { ai_1v1: 1, ai_2v2: 4 }; // 每波敵機數（HITL：2v2 從 2 → 4，多一點）
@@ -174,14 +178,16 @@ export class Dogfight {
   /**
    * 編隊 spawn 錨點：遠離玩家、落在玩家機頭前方弧內（不在機尾），朝玩家飛來。
    * 沒有在飛的玩家（剛進場/還在跑道）→ 退回機場原點、朝北（敵機從北方遠處進場）。
-   * @returns {{x:number, z:number, heading:number}} heading＝敵機飛行朝向（指回玩家）
+   * @returns {{x:number, z:number, heading:number, alt:number}} heading＝敵機飛行朝向（指回玩家）；alt＝玩家平均高度
    */
   _spawnAnchor() {
     const flying = this.players.filter((p) => p && p.alive);
-    let cx = 0, cz = 0, face = 0;
+    let cx = 0, cz = 0, face = 0, alt = ENEMY_ALT;
     if (flying.length) {
-      for (const p of flying) { cx += p.pos.x; cz += p.pos.z; }
+      let cy = 0;
+      for (const p of flying) { cx += p.pos.x; cz += p.pos.z; cy += p.pos.y; }
       cx /= flying.length; cz /= flying.length;
+      alt = Number.isFinite(cy / flying.length) ? cy / flying.length : ENEMY_ALT;
       const h = flying[0].heading;
       face = Number.isFinite(h) ? /** @type {number} */ (h) : 0; // 以第一架玩家朝向當「前方」
     }
@@ -191,7 +197,7 @@ export class Dogfight {
     const az = cz - Math.cos(dir) * ENEMY_SPAWN_DIST;
     // 敵機朝玩家質心飛（heading 指回 center）。
     const heading = Math.atan2(cx - ax, -(cz - az));
-    return { x: ax, z: az, heading };
+    return { x: ax, z: az, heading, alt };
   }
 
   /** spawn 一波 n 架敵機：V 字編隊、遠方前方進場、每機隨機強度（噴射機、敵色）。 @param {number} n */
@@ -210,7 +216,9 @@ export class Dogfight {
         z: a.z + rz * lat - fz * back,
         heading: ph,
       });
-      state.pos.y = ENEMY_ALT + lane * 18; state.speed = 62; state.mode = 'flying';
+      // v5.2-1：與玩家同高度帶交戰（平視、看得到側影），±抖動再夾限。
+      state.pos.y = clamp(a.alt + rand(-ENEMY_ALT_JITTER, ENEMY_ALT_JITTER), ENEMY_ALT_MIN, ENEMY_ALT_MAX) + lane * 18;
+      state.speed = 62; state.mode = 'flying';
       const entity = new PlaneEntity(this.scene, 0, planeSpec('f16').model, ENEMY_ACCENT);
       entity.setVisible(true);
       const strength = clamp(ENEMY_STRENGTH_MIN + Math.random() * ENEMY_STRENGTH_SPAN, 0, 1.35);
@@ -355,20 +363,21 @@ export class Dogfight {
 
   /** @param {number} slot 計分卡（TaskSlot）：PvP/ai＝擊落+命中率(+剩敵機)；氣球＝剩餘氣球+分數 */
   scoreText(slot) {
-    if (this.pvp) return `⚔️ 擊落 ${this.kills[slot]}　🎯 命中率 ${this.hitRate(slot)}%`;
-    if (this.enemies.length) return `🛩 敵機 ${this.aliveEnemies()}　擊落 ${this.kills[slot]}　🎯 ${this.hitRate(slot)}%`;
-    return `🎈 ${this.aliveBalloons()}/${this.balloonTotal}　💥 ${this.score[slot]}`;
+    if (this.pvp) return `⚔️擊落 ${this.kills[slot]}　🎯${this.hitRate(slot)}%`;
+    if (this.enemies.length) return `敵機 ${this.aliveEnemies()}　擊落 ${this.kills[slot]}　🎯${this.hitRate(slot)}%`;
+    return `🎈 ${this.aliveBalloons()}/${this.balloonTotal}　💥${this.score[slot]}`;
   }
 
-  /** @param {number} slot @param {number} now 武器卡（ModeSlot）：子模式 + 武器 + 彈藥/冷卻/補彈狀態 */
+  /** @param {number} slot @param {number} now 武器卡（ModeSlot）：子模式 + 武器 + 彈藥/冷卻/補彈狀態（更清晰） */
   weaponText(slot, now) {
     const spec = this.weaponSpec(slot);
     const mag = this.mags[slot][this.weaponId(slot)];
     let ammo;
-    if (mag.ammo <= 0) ammo = '🔄 回機場補彈';
-    else if (now < mag.readyAt) ammo = `${mag.ammo}/${mag.max} ·充填`; // 冷卻中
+    if (mag.ammo <= 0) ammo = '🔄回機場';
+    else if (now < mag.readyAt) ammo = `${mag.ammo}/${mag.max} ⏳`;
     else ammo = `${mag.ammo}/${mag.max}`;
-    return `${SUBMODE_ICON[/** @type {keyof typeof SUBMODE_ICON} */ (this.dfMode)] ?? '🔥'} ${spec.label} ${ammo}`;
+    const icon = SUBMODE_ICON[/** @type {keyof typeof SUBMODE_ICON} */ (this.dfMode)] ?? '🔥';
+    return `${icon} ${spec.label} ${ammo}`;
   }
 
   /**

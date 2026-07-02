@@ -89,13 +89,60 @@ describe('decideInput — 低空拉起地板', () => {
 describe('decideInput — difficulty 強度差異', () => {
   it('高難度 vs 低難度：高難度油門更滿、roll 更積極', () => {
     const self = airborne({ x: 0, z: 0, heading: 0 });
-    // 小方位誤差（目標幾乎在正前微偏右）→ roll 未飽和，才量得出增益差異。
-    const target = airborne({ x: 200, z: -3000 });
-    const easy = decideInput(self, target, { difficulty: 0.1, handicap: 0 });
+    // 方位誤差 ≈0.5 rad：在直線窗口（AIM_WINDOW_RAD）外、roll 未飽和，才量得出增益差異。
+    const target = airborne({ x: 1640, z: -3000 });
+    const easy = decideInput(self, target, { difficulty: 0.5, handicap: 0 });
     const hard = decideInput(self, target, { difficulty: 0.95, handicap: 0 });
     expect(hard.th).toBeGreaterThan(easy.th);
     expect(Math.abs(hard.r)).toBeGreaterThan(Math.abs(easy.r)); // 同方位下高難度轉得更兇
     expect(Math.abs(hard.r)).toBeLessThan(1); // 確認在未飽和區（增益差才有意義）
+  });
+});
+
+describe('decideInput — v5.2-1 可咬尾設計', () => {
+  it('直線瞄準窗口：目標在機頭 ±AIM_WINDOW_RAD 內 → 直飛不修方位（r=0）', () => {
+    const self = airborne({ x: 0, z: 0, heading: 0 });
+    const target = airborne({ x: 200, z: -3000 }); // 誤差 ≈0.067 rad，窗口內
+    const inp = decideInput(self, target, { difficulty: 0.95, handicap: 0 });
+    expect(inp.r).toBe(0);
+  });
+
+  it('窗口邊界連續：剛出窗口的 roll 極小（死區重基準、不跳變）', () => {
+    const self = airborne({ x: 0, z: 0, heading: 0 });
+    // 誤差 ≈ 0.32 rad（剛超出 0.3 的窗口）
+    const target = airborne({ x: 3000 * Math.tan(0.32), z: -3000 });
+    const inp = decideInput(self, target, { difficulty: 0.95, handicap: 0 });
+    expect(Math.abs(inp.r)).toBeGreaterThan(0);
+    expect(Math.abs(inp.r)).toBeLessThan(0.1);
+  });
+
+  it('近距減速：CLOSE_DIST 內油門比遠距低（讓玩家拉得近）', () => {
+    const self = airborne({ x: 0, z: 0, heading: 0 });
+    const near = airborne({ x: 0, z: -500 });   // 500m < CLOSE_DIST
+    const far = airborne({ x: 0, z: -2000 });   // 2000m > CLOSE_DIST
+    const iNear = decideInput(self, near, { difficulty: 0.8, handicap: 0 });
+    const iFar = decideInput(self, far, { difficulty: 0.8, handicap: 0 });
+    expect(iNear.th).toBeLessThan(iFar.th);
+    expect(iNear.th).toBeCloseTo(iFar.th * AI.CLOSE_TH_SCALE, 5);
+  });
+
+  it('新手局油門封頂：difficulty < EASY_DIFF 時 th ≤ EASY_TH_CAP（含閃避）', () => {
+    const self = airborne({ x: 0, z: 0, heading: 0 });
+    const chaseTarget = airborne({ x: 0, z: -2000 });
+    const chase = decideInput(self, chaseTarget, { difficulty: 0.2, handicap: 0 });
+    expect(chase.th).toBeLessThanOrEqual(AI.EASY_TH_CAP);
+    const tailTarget = airborne({ x: 0, z: 300 }); // 咬尾近距 → 閃避
+    const evade = decideInput(self, tailTarget, { difficulty: 0.2, handicap: 0 });
+    expect(evade.th).toBeLessThanOrEqual(AI.EASY_TH_CAP);
+  });
+
+  it('閃避距離隨難度放大：700m 咬尾在新手局不觸發閃避、滿難度觸發', () => {
+    const self = airborne({ x: 0, z: 0, heading: 0 });
+    const tail = airborne({ x: 0, z: 700 }); // 尾後 700m（> 基礎 600、< 滿難度 900）
+    const easy = decideInput(self, tail, { difficulty: 0, handicap: 0 });
+    expect(easy.th).toBeLessThan(AI.EVADE_TH);      // 未閃避（追擊油門）
+    const hard = decideInput(self, tail, { difficulty: 1, handicap: 0 });
+    expect(hard.th).toBeCloseTo(AI.EVADE_TH, 5);    // 閃避滿油
   });
 });
 

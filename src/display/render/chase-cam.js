@@ -1,7 +1,7 @@
 // @ts-check
 // 第三人稱追焦相機：機尾後上方、前視偏移、重阻尼平滑（6 歲減暈：不甩鏡頭）。
 import * as THREE from 'three';
-import { expDamp } from '../../lib/math.js';
+import { angDiff, expDamp, wrapAngle } from '../../lib/math.js';
 
 const BACK = 22;   // 機尾後方距離
 const UP = 8;      // 上方高度
@@ -12,6 +12,7 @@ export class ChaseCam {
     this.cam = new THREE.PerspectiveCamera(60, 16 / 9, 1, 5200);
     this._pos = new THREE.Vector3();
     this._look = new THREE.Vector3();
+    this._heading = 0;
     this._init = false;
   }
 
@@ -22,7 +23,12 @@ export class ChaseCam {
    * @param {number} [scale] 機體大小倍率（大機如 A330 把鏡頭往後/上拉，避免鑽進機身；小機=1）
    */
   update(s, dt, shake = 0, scale = 1) {
-    const dx = Math.sin(s.heading), dz = -Math.cos(s.heading);
+    if (!this._init) this._heading = s.heading;
+    // HITL 2026-06-21/07-02：位置在世界座標 lerp 會在轉彎時橫向落後（四分之三斜視＝偏右後）。
+    // 改為「方位角域平滑」：相機方位角追 heading，位置由平滑後方位直接算 → 任何轉速下恆在正後方，
+    // 只剩小角度延遲（甩鏡頭感由角域 damping 6.0 吸收，減暈拍板不變）。
+    this._heading = wrapAngle(this._heading + angDiff(this._heading, s.heading) * expDamp(6.0, dt));
+    const dx = Math.sin(this._heading), dz = -Math.cos(this._heading);
     const back = BACK * scale, up = UP * scale, ahead = AHEAD * scale;
     const targetPos = new THREE.Vector3(
       s.pos.x - dx * back,
@@ -39,9 +45,8 @@ export class ChaseCam {
       this._look.copy(targetLook);
       this._init = true;
     } else {
-      // HITL 2026-06-21 第二輪：起降/轉彎「對正」——相機要緊跟「正後方」。原本位置追太慢(3.2)→轉彎時
-      // 相機落在機身側後方＝四分之三斜視（看起來偏右後）。位置追快一點 + 注視點貼機身（plane 恆置中）。
-      this._pos.lerp(targetPos, expDamp(6.0, dt));
+      // 位置只留極輕平滑吸幀噪（14＝貼身）；橫向對正已由角域平滑保證。
+      this._pos.lerp(targetPos, expDamp(14.0, dt));
       this._look.lerp(targetLook, expDamp(11.0, dt));
     }
     this.cam.position.copy(this._pos);

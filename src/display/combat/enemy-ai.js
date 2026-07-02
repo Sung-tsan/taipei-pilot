@@ -28,11 +28,18 @@ export const AI = {
   CHASE_TH_GAIN: 0.4,    // difficulty 對追擊油門的加成（滿難度多踩 0.4）
   ROLL_GAIN_BASE: 1.4,   // 方位誤差 → roll 的比例增益基礎值（rad 誤差 ×增益 → r）
   ROLL_GAIN_DIFF: 1.6,   // difficulty 對 roll 增益的加成（高難度轉更兇）
+  // —— 可咬尾設計（v5.2-1：6 歲要咬得到尾）——
+  AIM_WINDOW_RAD: 0.3,   // rad 直線窗口：目標在機頭 ±此角內 → 不再修方位（給玩家可預測的瞄準窗）
+  CLOSE_DIST: 800,       // m 近距減速觸發距離（讓玩家拉得近）
+  CLOSE_TH_SCALE: 0.7,   // 近距時油門打折比例
+  EASY_DIFF: 0.4,        // 低於此難度視為新手局
+  EASY_TH_CAP: 0.65,     // 新手局油門封頂（敵機確實比玩家慢）
   // —— 俯仰追高（把機頭帶向目標的相對高度差）——
   PITCH_GAIN: 0.012,     // 高度差(m) → pitch 的比例增益（正=目標較高→拉桿爬升）
   PITCH_DIFF: 0.4,       // difficulty 對 pitch 權威的加成
   // —— 閃避（目標咬在自己尾後近距）——
-  EVADE_DIST: 600,       // m 閃避觸發距離（目標在後方且近於此）
+  EVADE_DIST: 600,       // m 閃避觸發基礎距離（目標在後方且近於此；新手局才是這個值）
+  EVADE_DIST_DIFF: 0.5,  // difficulty 對閃避距離的加成（滿難度 ×1.5＝900m，高手局敵機警覺早甩）
   EVADE_REAR_DOT: -0.3,  // 目標相對我機頭的「在後方」門檻（cos(夾角) < 此值＝偏後）
   EVADE_TH: 0.95,        // 閃避時油門（甩尾要能量）
   EVADE_PITCH: 0.5,      // 閃避時拉桿量（破壞性爬升轉彎）
@@ -136,7 +143,9 @@ export function decideInput(self, target, opts = {}) {
   const handicap = clamp(num(opts?.handicap, 0), 0, 1);
 
   // 判斷是否該閃避：目標在我尾後（alignDot 偏負）且近距。
-  const beingChased = g.alignDot < AI.EVADE_REAR_DOT && g.dist < AI.EVADE_DIST;
+  // 閃避距離隨難度放大：新手局 600m（比玩家射程近，留咬尾窗）、滿難度 900m（警覺早甩）。
+  const evadeDist = AI.EVADE_DIST * (1 + difficulty * AI.EVADE_DIST_DIFF);
+  const beingChased = g.alignDot < AI.EVADE_REAR_DOT && g.dist < evadeDist;
 
   let r, p, th;
 
@@ -151,13 +160,21 @@ export function decideInput(self, target, opts = {}) {
   } else {
     // —— 追擊：比例導引 ——
     const rollGain = AI.ROLL_GAIN_BASE + difficulty * AI.ROLL_GAIN_DIFF;
-    r = clamp(g.headErr * rollGain, -1, 1);
+    // 直線瞄準窗口（v5.2-1）：目標在機頭 ±AIM_WINDOW_RAD 內 → 直飛不再修方位，
+    // 給玩家可預測的射擊窗。用「死區重基準」保持連續（窗口邊界不跳變、不抖）。
+    const aimErr = Math.sign(g.headErr) * Math.max(0, Math.abs(g.headErr) - AI.AIM_WINDOW_RAD);
+    r = clamp(aimErr * rollGain, -1, 1);
     // pitch 追高度差（正=目標較高→拉桿爬升）；難度越高權威越大。
     const pitchGain = AI.PITCH_GAIN * (1 + difficulty * AI.PITCH_DIFF);
     p = clamp(g.dy * pitchGain, -0.6, 0.6);
     // 油門：基礎 + 難度加成；目標越偏離機頭略收一點油讓轉向先到位。
     th = AI.CHASE_TH_BASE + difficulty * AI.CHASE_TH_GAIN;
+    // 近距減速（v5.2-1）：逼近時收油，讓玩家追得上、咬得住。
+    if (g.dist < AI.CLOSE_DIST) th *= AI.CLOSE_TH_SCALE;
   }
+
+  // —— 新手局油門封頂（v5.2-1）：追擊/閃避一律封，新手局敵機確實比玩家慢 ——
+  if (difficulty < AI.EASY_DIFF) th = Math.min(th, AI.EASY_TH_CAP);
 
   // —— handicap 鈍化（AI 放水）——
   if (handicap > 0) {
