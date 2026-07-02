@@ -90,6 +90,7 @@ export class Dogfight {
     this.score = Array.from({ length: MAX_SLOTS }, () => 0); // 氣球/地面靶總分
     this.kills = Array.from({ length: MAX_SLOTS }, () => 0); // PvP 擊落數
     this.shots = Array.from({ length: MAX_SLOTS }, () => 0); // 發射數（命中率分母）
+    this.threat = Array.from({ length: MAX_SLOTS }, () => 0); // 最近被敵機瞄準的時間戳（RWR 警告，main 消費）
     this.hits = Array.from({ length: MAX_SLOTS }, () => 0);  // 命中數（氣球/地面靶/玩家）
 
     // PvP：dogfightMode==='pvp' 才開玩家互打；否則兩機幽靈穿透（不互鎖、不互傷）。
@@ -471,6 +472,11 @@ export class Dogfight {
       // 開火：spawn 後 grace 過、對準最近玩家、在射程內、冷卻過
       if (e.spawnAt < 0) e.spawnAt = now; // 首見＝記 spawn 時間（grace 起點）
       const armed = now - e.spawnAt > ENEMY_FIRE_GRACE_MS;
+      // 被瞄準警告（RWR）：比實彈條件更寬的錐角/射程 → 提前一拍預警（main 播 threatWarn）。
+      if (target && armed
+          && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM * 1.25, coneRad: 0.3 })) {
+        this.threat[target.slot] = now;
+      }
       if (target && armed && canFire(e.mag, now)
           && shouldFire(e.state, /** @type {any} */ ({ pos: target.pos }), { rangeM: ENEMY_WEAPON.rangeM, coneRad: 0.16 })) {
         // 追蹤力隨「該機」難度（易/放水→近直線可閃；難→中等追蹤、急轉/翻滾仍可甩）

@@ -150,7 +150,33 @@ export class GameAudio {
   }
 
   /**
+   * 無線電 squelch（v5.2 polish：塔台「開頻嘶-講話-關頻嘶」質感）。合成版（零 asset）：
+   * 短促帶通噪音 + 微 click，音量壓低（尊重 HITL 2026-06-20「不要刺耳電磁雜訊」拍板——
+   * 這是包語音的氣氛層、不是提示音；刺不刺耳由 Sung 真機裁定，可整段關）。
+   * @param {boolean} open true=開頻（略亮）、false=關頻（略沉短尾）
+   */
+  _squelch(open) {
+    const ctx = this.ctx; if (!ctx || !this.enabled) return;
+    const t0 = ctx.currentTime;
+    const dur = open ? 0.09 : 0.13;
+    const src = ctx.createBufferSource();
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = open ? 2400 : 1500; bp.Q.value = 1.1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.055, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+    this._tone('sine', open ? 1400 : 900, open ? 1400 : 900, 0.018, 0.04); // 微 click
+  }
+
+  /**
    * ATC 語音（瀏覽器內建 TTS）：念英文（國際 ATC 本就英文；en 系統語音較自然）。
+   * v5.2 polish：前後包 squelch（開頻嘶 → 講話 → 關頻嘶）＝塔台無線電感。
    * @param {string} enText
    */
   atcVoice(enText) {
@@ -163,6 +189,8 @@ export class GameAudio {
       const v = this._pickVoice();
       if (v) u.voice = v;
       u.rate = 1.02; u.pitch = 1.0; u.volume = 1.0;
+      this._squelch(true); // 開頻
+      u.onend = () => { try { this._squelch(false); } catch { /* ignore */ } }; // 關頻（講完才嘶）
       synth.speak(u);
     } catch { /* TTS 不可用：靜默（仍有 squelch + 文字） */ }
   }
@@ -227,6 +255,13 @@ export class GameAudio {
     if (!this._on()) return;
     this._tone('square', 880, 880, 0.05, 0.11);
     this._tone('square', 1320, 1320, 0.07, 0.11, 0.06);
+  }
+
+  /** 被敵機瞄準警告（RWR 風）：下行急促雙嗶——與 lockTone 上行相反，一耳可辨「是我被鎖」。 */
+  threatWarn() {
+    if (!this._on()) return;
+    this._tone('square', 1180, 1180, 0.06, 0.13);
+    this._tone('square', 780, 780, 0.09, 0.13, 0.08);
   }
 
   /** 迫降地形音：水花(水) / 刮地(草園) / 輪胎(馬路)，依 v1.1-2 terrain。 @param {string} terrain */
