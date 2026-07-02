@@ -28,14 +28,16 @@ const LIVERIES = ['#d8d8d8', '#e0c060', '#88b0d0', '#d09090', '#9ec9a0', '#c79bd
 export class AirportLife {
   /**
    * @param {THREE.Scene} scene
-   * @param {{ headingDeg?:number, runwayLength?:number, variant?:number }} [opts]
-   *   headingDeg＝該機場跑道方位（定向 group）；runwayLength＝跑道全長（燈位）；variant＝機場序（決定機隊組合，per-airport 變化）。
+   * @param {{ headingDeg?:number, runwayLength?:number, variant?:number, fleetCount?:number }} [opts]
+   *   headingDeg＝該機場跑道方位（定向 group）；runwayLength＝跑道全長（燈位）；variant＝機場序（決定機隊組合，per-airport 變化）；
+   *   fleetCount＝停機坪停放機數（v5.2-3：大場多機、離島小場少機）。
    */
-  constructor(scene, { headingDeg = 100, runwayLength = 2605, variant = 0 } = {}) {
+  constructor(scene, { headingDeg = 100, runwayLength = 2605, variant = 0, fleetCount = 4 } = {}) {
     this.group = new THREE.Group();
     this.group.rotation.y = Math.PI / 2 - (headingDeg * Math.PI) / 180; // 跑道-local（與 airport 對齊）
     this._half = runwayLength / 2;
     this._variant = variant;
+    this._fleetCount = Math.max(1, Math.min(6, fleetCount));
     scene.add(this.group);
     this._buildStatic();
     this._buildNightLights();
@@ -47,7 +49,7 @@ export class AirportLife {
   _buildStatic() {
     const geos = [];
     const v = this._variant;
-    const n = 4;
+    const n = this._fleetCount; // v5.2-3 per-airport 機數（intro 6 / inter 4 / expert 2）
     for (let i = 0; i < n; i++) {
       const shape = FLEET[(v + i) % FLEET.length];                 // per-airport 不同機隊組合
       const livery = LIVERIES[(v * 2 + i) % LIVERIES.length];

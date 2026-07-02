@@ -38,6 +38,21 @@ const TERMINAL_PALETTES = /** @type {Record<string, Record<string,string>>} */ (
   mountain: { B: '#d8c8a8', R: '#a8794f', T: '#c8b68f', D: '#5a6b3a', C: '#cfe3d2' }, // 山區：暖木+綠
   city: { B: '#e8ddc8', R: '#c8b9a0', T: '#d9cdb4', D: '#3a4666', C: '#bfe3f0' },     // 市區：米白（松山家族）
 });
+/** v5.2-3 per-airport 專屬色票（HITL 2026-07-02「各機場長一樣」：同地形共用色 → 一場一色）。id 優先、地形 fallback。 */
+const TERMINAL_PALETTES_BY_ID = /** @type {Record<string, Record<string,string>>} */ ({
+  tpe: { B: '#c9d6e8', R: '#7f9fd0', T: '#a8b8d0', D: '#2c3c66', C: '#bfe3f0' },     // 桃園：冷藍（大國際場玻璃感）
+  rmq: { B: '#e2d8c2', R: '#b08a58', T: '#d0c2a0', D: '#4a4436', C: '#d8e8d0' },     // 台中：暖土（清泉崗軍民合用）
+  khh: { B: '#d4dae4', R: '#6f8aa8', T: '#b0bcc8', D: '#324458', C: '#c2e4ee' },     // 高雄：港灰藍（港都）
+  hun: { B: '#dce4cc', R: '#5a8a52', T: '#c4d0ac', D: '#3c5a38', C: '#d2ecd8' },     // 花蓮：山綠（縱谷）
+  ttt: { B: '#f0dcc2', R: '#e08a3c', T: '#e0c8a0', D: '#7a4a28', C: '#fae4c8' },     // 台東：暖橙（熱氣球暖陽）
+  mzg: { B: '#f2ead2', R: '#d0b878', T: '#e4d8b8', D: '#5b8a72', C: '#d8ecdc' },     // 澎湖：沙米（玄武岩海島）
+  knh: { B: '#e8d4c2', R: '#b0503a', T: '#d8bca4', D: '#6a3428', C: '#e8dcc8' },     // 金門：磚紅（閩式聚落）
+  lzn: { B: '#eceef0', R: '#a8b4bc', T: '#d8dee2', D: '#4a5866', C: '#dce8ec' },     // 馬祖：霧白（常年霧鎖）
+});
+/** v5.2-3 離島陸地半徑倍率（澎湖大島、金門中、馬祖小到跑道貼海緣）。 */
+const ISLAND_R_K = /** @type {Record<string, number>} */ ({ mzg: 1.35, knh: 1.1, lzn: 1.0 });
+/** v5.2-3 山區丘數（花蓮縱谷山多、台東較開闊）。 */
+const HILL_COUNT = /** @type {Record<string, number>} */ ({ hun: 4, ttt: 2 });
 
 /** 建一個機場的完整場景（spec.id==='tsa' → 松山手刻；其餘 → template）。 @param {string} id @returns {AirportScene} */
 export function makeAirportScene(id) {
@@ -107,10 +122,11 @@ function makeTemplateScene(spec) {
   if (stripGeos.length) { const m = new THREE.Mesh(mergeGeometries(stripGeos), new THREE.MeshLambertMaterial({ color: '#8f8f87' })); stripGeos.forEach((g) => g.dispose()); group.add(m); }
 
   // —— 停機坪 + 航廈 + 塔台（voxel；通用件，§11 未來可換 CC0）——
-  // HITL 2026-06-21：各機場航廈用不同色票/規模，免得每場長得一樣（依地形 + 難度梯度）。
-  const PAL = TERMINAL_PALETTES[spec.terrain] ?? TERMINAL_PALETTES.coast;
+  // HITL 2026-06-21：各機場航廈用不同色票/規模；v5.2-3：色票改一場一色（id 優先、地形 fallback）。
+  const PAL = TERMINAL_PALETTES_BY_ID[spec.id] ?? TERMINAL_PALETTES[spec.terrain] ?? TERMINAL_PALETTES.coast;
   const sizeK = spec.tier === 'intro' ? 1.15 : spec.tier === 'expert' ? 0.7 : 1; // 大型場大、離島小
-  const apron = new THREE.Mesh(new THREE.BoxGeometry(Math.min(600, L * 0.42), 0.3, 300), new THREE.MeshLambertMaterial({ color: '#9a9a92' }));
+  const apronK = spec.tier === 'intro' ? 1.2 : spec.tier === 'expert' ? 0.6 : 1; // v5.2-3 停機坪規模隨等級
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(Math.min(600, L * 0.42) * apronK, 0.3, 300 * apronK), new THREE.MeshLambertMaterial({ color: '#9a9a92' }));
   apron.position.set(0, 0.15, -(W / 2 + 160)); group.add(apron);
   const termW = Math.min(580, L * 0.4) * sizeK;
   const termH = 18 * sizeK;
@@ -145,7 +161,7 @@ function makeTemplateScene(spec) {
 
   // —— env / 地形判定（世界座標 → local 判定）——
   const RUNWAY_STRIP = { along: HALF + 150, cross: Math.max(120, W) };
-  const islandR = HALF * 1.15; // 島嶼陸地半徑（外＝海）
+  const islandR = HALF * (ISLAND_R_K[spec.id] ?? 1.15); // v5.2-3 島嶼陸地半徑 per-airport（外＝海）
   /** @param {number} x @param {number} z @returns {{h:number,cx:number,cz:number}|null} */
   const solidAt = (x, z) => {
     const { along, lateral } = toLocal(x, z);
@@ -193,16 +209,18 @@ function buildTerrain(group, spec, L) {
   if (spec.terrain === 'island') {
     const sea = new THREE.Mesh(new THREE.CircleGeometry(HALF * 6, 40), new THREE.MeshLambertMaterial({ color: '#5fa6c4' }));
     sea.rotation.x = -Math.PI / 2; sea.position.y = -0.12; group.add(sea);
-    const land = new THREE.Mesh(new THREE.CircleGeometry(HALF * 1.15, 28), new THREE.MeshLambertMaterial({ color: '#b7c98a' }));
+    // v5.2-3 陸地半徑 per-airport（與 terrainAt 的 islandR 同倍率）：澎湖大島、馬祖跑道貼海緣。
+    const land = new THREE.Mesh(new THREE.CircleGeometry(HALF * (ISLAND_R_K[spec.id] ?? 1.15), 28), new THREE.MeshLambertMaterial({ color: '#b7c98a' }));
     land.rotation.x = -Math.PI / 2; land.position.y = -0.05; group.add(land);
   } else if (spec.terrain === 'coast') {
     // 海在 lateral 正側（航廈在負側）：一大塊水從跑道側邊鋪出去。
     const sea = new THREE.Mesh(new THREE.BoxGeometry(HALF * 8, 0.2, HALF * 5), new THREE.MeshLambertMaterial({ color: '#5fa6c4' }));
     sea.position.set(0, -0.1, HALF * 2.7); group.add(sea); // local +z＝lateral 正（group 旋轉後到真實海向）
   } else if (spec.terrain === 'mountain') {
-    // 幾座 voxel 山丘（merge），讀作「山海之間」。
+    // 幾座 voxel 山丘（merge），讀作「山海之間」。v5.2-3 丘數 per-airport（花蓮山多、台東開闊）。
     const hillGeos = [];
-    const spots = [[-HALF * 0.7, -HALF * 1.3], [HALF * 0.9, -HALF * 1.6], [-HALF * 1.2, HALF * 1.1], [HALF * 1.3, HALF * 1.4]];
+    const spots = [[-HALF * 0.7, -HALF * 1.3], [HALF * 0.9, -HALF * 1.6], [-HALF * 1.2, HALF * 1.1], [HALF * 1.3, HALF * 1.4]]
+      .slice(0, HILL_COUNT[spec.id] ?? 4);
     for (const [ax, lz] of spots) {
       for (let k = 0; k < 3; k++) {
         const s = 180 - k * 50; const g = new THREE.BoxGeometry(s, 60 + k * 50, s);
@@ -236,11 +254,11 @@ function buildSignature(group, spec, W) {
   const d = DEFS[spec.id];
   if (!d) return null;
   // 放在跑道對側開闊處（lateral 正側＝航廈對面），起降/在停機坪都看得到＝每場的識別地標。
-  // HITL 2026-06-21：放大 + 拉近，讓各機場差異看得出來。
+  // HITL 2026-06-21 放大+拉近；v5.2-3 再放大（1.6→2.4）＋更近視線軸（230→190），差異一眼可辨。
   const along = -spec.runway.lengthM * 0.1;
-  const lateral = spec.runway.widthM / 2 + 230;
+  const lateral = spec.runway.widthM / 2 + 190;
   const geo = buildVoxelGeometry(d);
-  geo.scale(1.6, 1.6, 1.6); // 放大＝醒目（各場不同剪影：風車/燈塔/熱氣球/山門…）
+  geo.scale(2.4, 2.4, 2.4); // 放大＝醒目（各場不同剪影：風車/燈塔/熱氣球/山門…）
   const mesh = new THREE.Mesh(geo, voxelMaterial());
   // local→group：沿 +X=along、+Z=lateral（group 整體旋轉到真實方位）。
   mesh.position.set(along, 0, lateral);

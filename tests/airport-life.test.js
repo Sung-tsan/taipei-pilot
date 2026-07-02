@@ -29,4 +29,15 @@ describe('AirportLife 機場生活感', () => {
     expect(() => life.update(0.5, 0.3, 6)).not.toThrow();
     expect(life.radar.rotation.y).toBeGreaterThan(before); // 掃描旋轉推進
   });
+
+  it('v5.2-3 fleetCount：大場(6)靜態幾何比離島(2)多、皆仍 merged 少 mesh', () => {
+    const big = /** @type {any} */ (new AirportLife(new THREE.Scene(), { fleetCount: 6 }));
+    const small = /** @type {any} */ (new AirportLife(new THREE.Scene(), { fleetCount: 2 }));
+    // 靜態擺件仍 merged 成單一 mesh（draws 紀律不破）——差異表現在頂點量
+    const vtx = (/** @type {any} */ life) => life._static.geometry.getAttribute('position').count;
+    expect(vtx(big)).toBeGreaterThan(vtx(small));
+    expect(big.group.children.filter((/** @type {any} */ o) => o.isMesh).length).toBeLessThanOrEqual(8);
+    // 夾限：異常值不爆
+    expect(() => new AirportLife(new THREE.Scene(), { fleetCount: 99 })).not.toThrow();
+  });
 });
