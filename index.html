@@ -208,6 +208,7 @@
     .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(255,255,255,.9); }
     .reticle.locked { border-color: #ff5a5a; box-shadow: 0 0 8px #ff5a5a99, 0 0 0 1px rgba(0,0,0,.45); animation: reticleLock .6s ease-in-out infinite; }
     .reticle.locked::after { background: #ff5a5a; }
+    .reticle.searching { border-style: dashed; border-color: rgba(255,255,255,.55); opacity: .65; }
     /* 鎖定脈動（v2.0-5）：紅框輕微縮放，一眼看出「鎖到了」 */
     @keyframes reticleLock { 0%,100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.18); } }
 
@@ -348,19 +349,19 @@
       <div class="set-section">
         <div class="set-label">玩什麼？</div>
         <div id="pmRow" class="set-row">
-          <button class="set-opt tactile" data-pm="free">✈️ 自由飛<small>到處逛</small></button>
-          <button class="set-opt tactile" data-pm="mission">🎯 任務<small>找地標</small></button>
-          <button class="set-opt tactile" data-pm="dogfight">🔥 空戰<small>打靶/對戰</small></button>
-          <button class="set-opt tactile" data-pm="race">🏁 競速<small>比快</small></button>
+          <button class="set-opt tactile" data-pm="free">✈️ 自由飛<small>隨便飛</small></button>
+          <button class="set-opt tactile" data-pm="mission">🎯 任務<small>找地標學地理</small></button>
+          <button class="set-opt tactile" data-pm="dogfight">🔥 空戰<small>氣球靶 / PvP / AI敵機</small></button>
+          <button class="set-opt tactile" data-pm="race">🏁 競速<small>穿圈或衝地標</small></button>
         </div>
       </div>
       <div class="set-section" id="dogfightSection">
-        <div class="set-label">空戰怎麼打？<small>（空戰模式）</small></div>
+        <div class="set-label">空戰怎麼打？<small>（🔥 正式賣點）</small></div>
         <div id="dmRow" class="set-row">
-          <button class="set-opt tactile" data-dm="balloons">🎈 氣球靶</button>
-          <button class="set-opt tactile" data-dm="pvp">⚔️ 對打</button>
-          <button class="set-opt tactile" data-dm="ai_1v1">🤖 1v1</button>
-          <button class="set-opt tactile" data-dm="ai_2v2">🤝 2v2</button>
+          <button class="set-opt tactile" data-dm="balloons">🎈 氣球靶<small>練習鎖定</small></button>
+          <button class="set-opt tactile" data-dm="pvp">⚔️ 對打<small>兄弟互戰</small></button>
+          <button class="set-opt tactile" data-dm="ai_1v1">🤖 1v1<small>單挑敵機</small></button>
+          <button class="set-opt tactile" data-dm="ai_2v2">🤝 2v2<small>合作打敵</small></button>
         </div>
       </div>
       <div class="set-section" id="raceSection">

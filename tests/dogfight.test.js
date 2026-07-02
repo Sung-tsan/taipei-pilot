@@ -154,13 +154,13 @@ describe('Dogfight 整合', () => {
     // 氣球模式：計分卡有🎈、武器卡有彈藥
     expect(df.scoreText(0)).toContain('🎈');
     expect(df.weaponText(0, 0)).toContain('/'); // 彈藥 a/m
-    // 冷卻中：fire 後 readyAt 在未來 → 顯示「充填」
+    // 冷卻中：fire 後 readyAt 在未來 → 顯示 ⏳
     const id = df.weaponId(0);
     df.mags[0][id].readyAt = 999999;
-    expect(df.weaponText(0, 0)).toContain('充填');
-    // 彈盡：顯示回機場補彈
+    expect(df.weaponText(0, 0)).toContain('⏳');
+    // 彈盡：顯示回機場
     df.mags[0][id].ammo = 0;
-    expect(df.weaponText(0, 1000000)).toContain('補彈');
+    expect(df.weaponText(0, 1000000)).toContain('回機場');
     // PvP/ai 計分卡＝擊落+命中率
     df.setMode('pvp');
     expect(df.scoreText(0)).toContain('擊落');
