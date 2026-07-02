@@ -24,3 +24,16 @@
 - "Airplane"（Boeing 787）— Poly by Google，CC-BY 3.0（https://poly.pizza/m/fzIXe2paBN9）。
 - "Small plane" — Poly by Google，CC-BY 3.0（https://poly.pizza/m/1uXmHq-ELhz）。
 - Kenney（kenney.nl）Car Kit — CC0 1.0。
+
+## 音效（public/sounds/，v5.2 polish）
+| 檔案 | 用途 | 來源 | 授權 | 需標示 |
+|------|------|------|------|--------|
+| `sounds/squelch-open.mp3` | ATC 語音開頻嘶（clip 優先、合成保底） | freesound "Walkie Talkie - Transmission Start" by bruce965（https://freesound.org/people/bruce965/sounds/321905/；此為 HQ 預覽轉檔 128k mp3，全質量 FLAC 需帳號下載、可直接替換） | **CC0** | 否（仍致謝） |
+| `sounds/squelch-close.mp3` | ATC 語音關頻嘶 | freesound "Walkie Talkie - Roger Beep" by bruce965（https://freesound.org/people/bruce965/sounds/321906/） | **CC0** | 否（仍致謝） |
+| （未入庫） | 背景 static loop 候選：freesound "continuous static" by Jace（https://freesound.org/people/Jace/sounds/35291/，CC0）——疊底噪與「不刺耳」拍板衝突，待 Sung 裁定再接 | — | CC0 | — |
+
+## B737 窄體 GLB 候選（2026-07-02 搜尋，待 Sung 下載拍板）
+- **首選**："Low Poly Airliner" by Mauro3D — CC-BY 4.0、3,484 tris、A320 窄體翼吊雙發、**輪子獨立 mesh（可接收放）**（https://sketchfab.com/3d-models/low-poly-airliner-f06d488f08764e3ca26f2917d4053c69；Sketchfab 下載需登入帳號）
+- 次選："Low Poly Passenger Aircraft" by Crimexix — CC-BY 4.0、2,700 tris（外型需開預覽確認）
+- 唯一 CC0：OpenGameArt "Jumbo Jet, Wide Body"（寬體，需改窄+轉檔；https://opengameart.org/content/jumbo-jetwide-body）
+- 結論維持：「線上幾乎無 CC0 客機」再驗證成立（Sketchfab CC0 池實測零客機）。

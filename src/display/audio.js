@@ -80,6 +80,23 @@ export class GameAudio {
 
     this.enabled = true;
     if (this._pendingWeather) this.setWeather(this._pendingWeather.type, this._pendingWeather.night); // 補套用
+    this._loadSquelchClips(ctx); // v5.2：CC0 真無線電 squelch clip（載不到＝合成保底，零 asset 韌性不變）
+  }
+
+  /**
+   * 載入 CC0 squelch clips（freesound bruce965 321905/321906，CC0；見 public/models/CREDITS.md）。
+   * async、失敗靜默——_squelch() 有合成保底。 @param {AudioContext} ctx
+   */
+  _loadSquelchClips(ctx) {
+    /** @type {Record<string, AudioBuffer>} */
+    this._clips = {};
+    for (const [key, url] of [['open', '/sounds/squelch-open.mp3'], ['close', '/sounds/squelch-close.mp3']]) {
+      fetch(url)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+        .then((ab) => ctx.decodeAudioData(ab))
+        .then((buf) => { if (this._clips) this._clips[key] = buf; })
+        .catch(() => { /* 載入失敗：合成保底 */ });
+    }
   }
 
   /**
@@ -157,6 +174,17 @@ export class GameAudio {
    */
   _squelch(open) {
     const ctx = this.ctx; if (!ctx || !this.enabled) return;
+    // CC0 真 clip 優先（載好才用；音量壓低同合成版），載不到走下方合成保底。
+    const clip = this._clips?.[open ? 'open' : 'close'];
+    if (clip) {
+      const src = ctx.createBufferSource();
+      src.buffer = clip;
+      const g = ctx.createGain();
+      g.gain.value = 0.16;
+      src.connect(g).connect(ctx.destination);
+      src.start();
+      return;
+    }
     const t0 = ctx.currentTime;
     const dur = open ? 0.09 : 0.13;
     const src = ctx.createBufferSource();
