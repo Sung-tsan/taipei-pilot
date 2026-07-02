@@ -34,7 +34,8 @@ Append 格式（一行）：
 - [ ] 擬真爆炸真·取樣 clip 待 CC0 drop — V2 音效 — 合成已逼近，待 CC0 音效資產
 - [ ] ATC 真語音 clip / 預生成 TTS — v4.1-2 — 目前＝文字 + 合成無線電 squelch；真語音留 V5（交付明訂）
 - [ ] ATR-72 換純 CC0 客機 GLB（目前 **CC-BY 3.0** 通用噴射客機代用螺旋槳機）— v4.0-1 — 線上查無 CC0 客機（見 public/models/CREDITS.md）；丟 CC0 GLB 進 `public/models/airliner.glb` 即一行替換
-- [ ] B737 專屬窄體 GLB + 航司塗裝（目前與 A330 共用 787 GLB 縮小代用）— v5.1-2 — 外型代用、玩法不受影響；丟窄體 GLB 進 public/models 即換
+- [x] B737 專屬窄體 GLB — 2026-07-02 換裝 Mauro3D "Low Poly Airliner"（CC-BY 4.0、A320 體、翼吊雙發、**原生輪組真收放**）；與 A330 外型徹底分開
+- [ ] B737 航司塗裝（模型現為素色雙材質）— v5.1-2 遺留 — 塗裝重貼/著色待美術輪
 - [ ] 機場 props CC0 化（航廈/塔台/招牌地標目前 template voxel）— v5.0-1 — §11 通用件可換 CC0 low-poly；地標可保 voxel
 - [ ] ATC 真語音：V5 已做 grounded bank（文字 + 英文 TTS）；真·取樣無線電 clip 仍待 CC0 — v5.1-1
 

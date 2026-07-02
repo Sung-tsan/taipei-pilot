@@ -27,6 +27,8 @@ export class PlaneEntity {
     this._planeMeshes = [];
     /** @type {THREE.Object3D|null} GLB 機體 clone（民航機；幾何/材質與模板共用，dispose 時不釋放） */
     this._glbRoot = null;
+    /** @type {THREE.Object3D[]} GLB 原生起落架 node（desc.gearNodes；真收放，v5.2-4） */
+    this._glbGearNodes = [];
     this._loadToken = 0; // async GLB 載入的作廢序號（換機時 +1，丟棄過期載入）
     this._shadowScale = 1; // 影子半徑倍率（大機放大）
     /** @type {THREE.Mesh|null} 螺旋槳（噴射機/GLB＝null） */
@@ -117,9 +119,10 @@ export class PlaneEntity {
     }
   }
 
-  /** 移除 GLB clone（幾何/材質與模板共用，故不 dispose）。 */
+  /** 移除 GLB clone（幾何/材質與模板共用，故不 dispose）；原生輪組參照一併清（防換機殘留）。 */
   _clearGlb() {
     if (this._glbRoot) { this.group.remove(this._glbRoot); this._glbRoot = null; }
+    this._glbGearNodes = [];
   }
 
   /**
@@ -133,14 +136,25 @@ export class PlaneEntity {
     this.prop = null;
     this._shadowScale = Math.max(1, (desc.lengthM ?? 20) / 10); // 大機影子放大
     const L = desc.lengthM ?? 20;
-    const gearH = Math.max(0.9, L * 0.045); // 輪高（機身尺寸等比）
-    this.gear = this._buildGlbGear(L, gearH);
+    this._glbGearNodes = [];
+    const hasRealGear = Array.isArray(desc.gearNodes) && desc.gearNodes.length > 0;
+    // 無原生輪組的 clean-belly 模型 → 疊參數化 voxel 假輪組 + 機身抬輪高；
+    // 有原生輪組（gearNodes）→ 模型自帶站姿（fitToLength 落地含輪），零假件。
+    const gearH = Math.max(0.9, L * 0.045);
+    this.gear = hasRealGear ? null : this._buildGlbGear(L, gearH);
     const token = this._loadToken;
     loadToyModel(desc.glb, { lengthM: desc.lengthM }).then((tmpl) => {
       if (token !== this._loadToken) return; // 已切換到別的模型
       const inst = tmpl.clone(true);
       inst.rotation.y = desc.yaw ?? 0;       // 機鼻朝向修正
-      inst.position.y += gearH;              // clean-belly 原坐地 → 抬到輪頂（放下時輪子貼地）
+      if (hasRealGear) {
+        for (const name of /** @type {string[]} */ (desc.gearNodes)) {
+          const n = inst.getObjectByName(name);
+          if (n) { n.scale.y = this._gearK; this._glbGearNodes.push(n); }
+        }
+      } else {
+        inst.position.y += gearH;            // clean-belly 原坐地 → 抬到輪頂（放下時輪子貼地）
+      }
       this.group.add(inst);
       this._glbRoot = inst;
     }).catch(() => { /* 載入失敗：保持無機體，不爆 */ });
@@ -196,13 +210,14 @@ export class PlaneEntity {
     if (this.prop) this.prop.rotation.z += (6 + throttle * 30) * dt; // 噴射機/GLB 無螺旋槳
 
     // 起落架收放動畫（~0.8s 平滑縮放）：voxel 機整組 scale.y 縮進機腹。
-    // GLB 機（v5.2-4）＝參數化 voxel 假起落架（_buildGlbGear），同一套 scale.y 收放；
-    // 真·建模輪組＝資產缺口（POLISH_BACKLOG 維度 1）。
-    if (this.gear) {
+    // GLB 機（v5.2-4）：有原生輪組（gearNodes，pivot 在頂）＝真收放；否則假 voxel 輪組同語義。
+    const gearNodes = this._glbGearNodes ?? [];
+    if (this.gear || gearNodes.length) {
       const gearTarget = s.gearDown ? 1 : 0.04;
       this._gearK += (gearTarget - this._gearK) * expDamp(4, dt);
-      this.gear.scale.y = this._gearK;
-      this.gear.visible = this._gearK > 0.05;
+      const show = this._gearK > 0.05;
+      if (this.gear) { this.gear.scale.y = this._gearK; this.gear.visible = show; }
+      for (const n of gearNodes) { n.scale.y = this._gearK; n.visible = show; }
     }
 
     // 冒煙脈動（toy 風：縮放 + 透明度輕微抖動）

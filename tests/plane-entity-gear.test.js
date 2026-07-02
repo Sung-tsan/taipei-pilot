@@ -50,6 +50,16 @@ describe('PlaneEntity — GLB 假起落架（v5.2-4）', () => {
     expect(gearMeshes).toHaveLength(1);
   });
 
+  it('gearNodes 模型（B737 真輪組）：不建假輪（gear=null）、sync 不爆', () => {
+    const b737 = { glb: '/models/low_poly_airliner.glb', lengthM: 38, yaw: Math.PI, gearNodes: ['Cylinder.001', 'Cylinder.002', 'Cylinder.003'] };
+    const e = new PlaneEntity(new THREE.Scene(), 0, /** @type {any} */ (b737));
+    expect(e.gear).toBeNull(); // 真輪組模型不疊假 voxel 輪
+    const s = /** @type {any} */ (state(false));
+    expect(() => { for (let i = 0; i < 30; i++) e.sync(s, 0.8, 1 / 30, () => 0); }).not.toThrow();
+    // node 環境 GLB 載入必失敗 → _glbGearNodes 空（catch 保底）；瀏覽器端由 HITL 驗真收放
+    expect(() => e.setModel(planeSpec('t34c').model)).not.toThrow(); // 換機清 gear nodes 不殘留
+  });
+
   it('voxel 機（T-34C）既有收放不受影響', () => {
     const e = new PlaneEntity(new THREE.Scene(), 0, planeSpec('t34c').model);
     expect(e.gear).not.toBeNull();

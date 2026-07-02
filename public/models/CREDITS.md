@@ -37,3 +37,12 @@
 - 次選："Low Poly Passenger Aircraft" by Crimexix — CC-BY 4.0、2,700 tris（外型需開預覽確認）
 - 唯一 CC0：OpenGameArt "Jumbo Jet, Wide Body"（寬體，需改窄+轉檔；https://opengameart.org/content/jumbo-jetwide-body）
 - 結論維持：「線上幾乎無 CC0 客機」再驗證成立（Sketchfab CC0 池實測零客機）。
+
+## B737 專屬窄體 GLB（2026-07-02 換裝完成）
+| 檔案 | 用途 | 來源 | 授權 | 需標示 |
+|------|------|------|------|--------|
+| `low_poly_airliner.glb` | **B737**（窄體幹線；A320 體、翼吊雙發、3,484 tris；**起落架＝原生獨立 node（鼻輪+雙主輪）→ 真收放**） | "Low Poly Airliner" by Mauro3D（https://sketchfab.com/3d-models/low-poly-airliner-f06d488f08764e3ca26f2917d4053c69；授權 metadata 內建於 GLB asset.extras） | **CC-BY 4.0** | **是** |
+
+- 致謝："Low Poly Airliner" by Mauro3D (https://sketchfab.com/maurogsw), licensed under CC-BY 4.0.
+- yaw=π（垂尾頂點掃描在 -Z 端＝機鼻原朝 +Z）；scale/站姿待 Sung 真機目視校正。
+- B737 與 A330 至此外型徹底分開（原共用 787 GLB 縮小代用退役）。

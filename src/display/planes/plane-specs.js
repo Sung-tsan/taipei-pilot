@@ -13,9 +13,11 @@ import { f16Body, f16Gear } from '../../voxel/models/f16.js';
 /**
  * @typedef {import('../../voxel/build.js').VoxelModel} VoxelModel
  * @typedef {{ body:VoxelModel, gear:VoxelModel, prop?:VoxelModel, propPos?:{x:number,y:number,z:number} }} PlaneModel
- * @typedef {{ glb:string, lengthM:number, yaw?:number }} GlbModel
+ * @typedef {{ glb:string, lengthM:number, yaw?:number, gearNodes?:string[] }} GlbModel
  *   V4 民航機：CC0/CC-BY low-poly GLB（runtime 過 assets/glb-model.js normalize 管線，§11 共存）。
  *   glb＝public 路徑；lengthM＝最長水平邊縮到幾公尺；yaw＝機鼻朝向修正(rad，待 HITL 校正)。
+ *   gearNodes（v5.2-4）＝模型內「獨立起落架 node 名」清單：有給＝真收放（scale.y 縮往 pivot），
+ *   沒給＝疊參數化 voxel 假輪組（plane-entity._buildGlbGear）。
  * @typedef {{
  *   id: string,
  *   name: string,                 // HUD 顯示（含 emoji）
@@ -99,7 +101,9 @@ export const PLANE_SPECS = {
     },
     dims: { wingspan: 35, minRunwayLength: 1500 }, // 窄體：翼展 ~35m、跑道需求中等
     fuelSec: 2200, // 大油箱長航程（range≈396km，飛得到所有九機場含金門/馬祖）
-    model: { glb: '/models/a330.glb', lengthM: 38, yaw: Math.PI }, // 787 GLB 縮到窄體尺寸代用（與 A330 同模型、較小）
+    // v5.2：專屬窄體 GLB（Mauro3D "Low Poly Airliner"，CC-BY 4.0，A320 體、翼吊雙發、3.5k tris）。
+    // 起落架＝模型原生獨立 node（鼻輪+雙主輪，pivot 在頂）→ 真收放；yaw=π（垂尾在 -Z 端＝機鼻原朝 +Z，頂點掃描驗證）。
+    model: { glb: '/models/low_poly_airliner.glb', lengthM: 38, yaw: Math.PI, gearNodes: ['Cylinder.001', 'Cylinder.002', 'Cylinder.003'] },
     unlock: { flightMin: 45, landings: 15 }, // v1.2 解鎖：介於 ATR 與 A330
   },
   // A330 廣體客機 —— tone ladder 最仿真端（大、最重、最慢轉、最長跑道）。clean-belly low-poly GLB。
