@@ -125,19 +125,55 @@ export class PlaneEntity {
   /**
    * 載入 GLB 機體（async；過 normalize 管線）：clone 模板 → 套機鼻朝向 → 掛進 group。
    * 載入期間先無機體（很短）；換機/dispose 用 _loadToken 作廢過期載入。
+   * v5.2-4：GLB 皆 clean-belly（CREDITS.md，無外露輪）→ 疊「參數化 voxel 假起落架」，
+   * 收放沿用 voxel 機的 scale.y 動畫；機身整體抬高輪高（停機站在輪上、收輪後機腹乾淨）。
    * @param {import('./plane-specs.js').GlbModel} desc
    */
   _buildGlb(desc) {
-    this.prop = null; this.gear = null;
+    this.prop = null;
     this._shadowScale = Math.max(1, (desc.lengthM ?? 20) / 10); // 大機影子放大
+    const L = desc.lengthM ?? 20;
+    const gearH = Math.max(0.9, L * 0.045); // 輪高（機身尺寸等比）
+    this.gear = this._buildGlbGear(L, gearH);
     const token = this._loadToken;
     loadToyModel(desc.glb, { lengthM: desc.lengthM }).then((tmpl) => {
       if (token !== this._loadToken) return; // 已切換到別的模型
       const inst = tmpl.clone(true);
       inst.rotation.y = desc.yaw ?? 0;       // 機鼻朝向修正
+      inst.position.y += gearH;              // clean-belly 原坐地 → 抬到輪頂（放下時輪子貼地）
       this.group.add(inst);
       this._glbRoot = inst;
     }).catch(() => { /* 載入失敗：保持無機體，不爆 */ });
+  }
+
+  /**
+   * 參數化 voxel 假起落架（GLB 機用；v5.2-4 方案 B）：鼻輪 + 左右主輪，尺寸隨機身等比。
+   * 與 voxel 機同一套鉸點/收放語義：幾何佔 [-gearH, 0]、mesh.position.y = gearH、scale.y 收放。
+   * @param {number} L 機身長（m） @param {number} gearH 輪高（m）
+   * @returns {THREE.Mesh}
+   */
+  _buildGlbGear(L, gearH) {
+    const strutW = Math.max(0.25, L * 0.012);
+    const wheelR = Math.max(0.35, L * 0.02);
+    const legs = [
+      { x: 0, z: -L * 0.32 },          // 鼻輪（前＝-Z，與 heading forward 同制）
+      { x: -L * 0.06, z: L * 0.04 },   // 左主輪
+      { x: L * 0.06, z: L * 0.04 },    // 右主輪
+    ];
+    /** @type {(string|number)[][]} */
+    const boxes = [];
+    for (const g of legs) {
+      boxes.push([g.x - strutW / 2, wheelR, g.z - strutW / 2, strutW, gearH - wheelR, strutW, 'S']);
+      boxes.push([g.x - wheelR, 0, g.z - wheelR * 1.1, wheelR * 2, wheelR * 2, wheelR * 2.2, 'W']);
+    }
+    const geo = buildVoxelGeometry({ scale: 1, palette: { S: '#8a8f99', W: '#22252e' }, boxes });
+    geo.translate(0, -gearH, 0);
+    const gear = new THREE.Mesh(geo, voxelMaterial());
+    gear.position.y = gearH;
+    gear.scale.y = this._gearK; // 維持目前收放狀態（換機不重置）
+    this.group.add(gear);
+    this._planeMeshes.push(gear); // 換機/dispose 隨 voxel 網格一起清
+    return gear;
   }
 
   /** 受損冒煙開關（真實模式） @param {boolean} smoking */
@@ -160,8 +196,8 @@ export class PlaneEntity {
     if (this.prop) this.prop.rotation.z += (6 + throttle * 30) * dt; // 噴射機/GLB 無螺旋槳
 
     // 起落架收放動畫（~0.8s 平滑縮放）：voxel 機整組 scale.y 縮進機腹。
-    // GLB 機（ATR）此模型把 3 根支柱烤進機身網格、無法單獨隱藏 → 起落架恆放下（見 POLISH_BACKLOG）；
-    // 「收輪飛較快」仍由 flight-model gearDown 速度上限生效（視覺不收）。
+    // GLB 機（v5.2-4）＝參數化 voxel 假起落架（_buildGlbGear），同一套 scale.y 收放；
+    // 真·建模輪組＝資產缺口（POLISH_BACKLOG 維度 1）。
     if (this.gear) {
       const gearTarget = s.gearDown ? 1 : 0.04;
       this._gearK += (gearTarget - this._gearK) * expDamp(4, dt);
