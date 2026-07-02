@@ -16,14 +16,14 @@ export const LOW_FUEL_FRAC = 0.2;
 /** @param {number} maxSec @returns {Fuel} 滿油狀態 */
 export function makeFuel(maxSec) { return { sec: maxSec, max: maxSec }; }
 
-/** 機種滿油航程（公里）。 @param {number} maxSec @returns {number} */
-export function rangeKm(maxSec) { return maxSec * RANGE_K; }
+/** 機種滿油航程（公里）。k 可覆寫（v5.2 調參面板；缺省＝定稿常數）。 @param {number} maxSec @param {number} [k] @returns {number} */
+export function rangeKm(maxSec, k = RANGE_K) { return maxSec * k; }
 
-/** 一條航線要耗多少油（秒）＝距離 / K。 @param {number} distanceKm @returns {number} */
-export function routeFuelCostSec(distanceKm) { return distanceKm / RANGE_K; }
+/** 一條航線要耗多少油（秒）＝距離 / K。 @param {number} distanceKm @param {number} [k] @returns {number} */
+export function routeFuelCostSec(distanceKm, k = RANGE_K) { return distanceKm / k; }
 
-/** 該機種飛得到這條航線嗎（航程 gate）。 @param {number} maxSec @param {number} distanceKm @returns {boolean} */
-export function canReach(maxSec, distanceKm) { return rangeKm(maxSec) >= distanceKm; }
+/** 該機種飛得到這條航線嗎（航程 gate）。 @param {number} maxSec @param {number} distanceKm @param {number} [k] @returns {boolean} */
+export function canReach(maxSec, distanceKm, k = RANGE_K) { return rangeKm(maxSec, k) >= distanceKm; }
 
 /** 剩餘比例 0..1。 @param {Fuel} f */
 export function fuelFrac(f) { return f.max > 0 ? Math.max(0, Math.min(1, f.sec / f.max)) : 0; }
