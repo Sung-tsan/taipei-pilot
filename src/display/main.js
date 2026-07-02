@@ -42,12 +42,10 @@ import { MissionRunner } from './missions/mission-runner.js';
 import { airspaceTaipei } from './missions/airspace-taipei.js';
 import { loadCollection, saveCollection, flyRoute, shouldCelebrateNetwork } from './missions/collection-store.js';
 import { ringsAlongRiver, MISSION_TYPES } from './missions/missions.js';
-import { RACE_TYPES, makeRace, updateRacer, ranking, allFinished } from './missions/race.js';
-import { courseKey, loadRaceRecords, saveRaceRecords, recordRaceRun } from './missions/race-records.js';
+import { RaceController, RACE_LABELS } from './missions/race-controller.js';
 import { AmbientDeparture } from './scene/ambient-departure.js';
 import { TUNING, loadTuning } from './tuning.js';
 import { initTuningPanel } from './ui/tuning-panel.js';
-import { RaceMarkers } from './missions/race-markers.js';
 import { loadSettings, saveSettings, WEATHER_PREFS } from './ui/settings-store.js';
 import { MAX_SLOTS } from '../../shared/constants.js';
 import { BTN } from '../../shared/protocol.js';
@@ -300,48 +298,9 @@ window.addEventListener('keydown', (e) => {
 });
 
 // —— 競速（v2.1-1）：兩型（穿圈航線 / 地標衝刺）+ 起點/終點視覺（HITL #4）——
+// glue 已抽到 missions/race-controller.js（維度 10 拆檔）；raceType 是玩法選單的 seam、留在 main。
+// raceCtl 建構在 wasDriven 定義之後（deps 直接注入實參照，避免 TDZ）。
 let raceType = 'rings';          // rings（穿圈航線）/ landmark（地標衝刺）
-/** @type {ReturnType<typeof makeRace>|null} */ let race = null;
-const raceMarkers = new RaceMarkers(scene);
-let raceCelebrated = false;      // 全員完賽一次性 banner
-const raceRecords = loadRaceRecords(); // v5.2 競速收集簿：per 賽道最佳成績（雙人共享）
-const RACE_LABELS = /** @type {Record<string,string>} */ ({ landmark: '🟢 地標衝刺', rings: '🌊 河谷穿圈' });
-/** 競速賽道目標座標（給導引箭頭）：rings→course.rings；landmark→target */
-/** @type {{x:number,z:number}[]} */ let raceWaypoints = [];
-const RACE_RING_Y = 250, RACE_RING_R = 95;
-
-/** 依 raceType 產生賽道（race.js course + 視覺 waypoints + 起點）。 @param {string} type */
-function buildRaceCourse(type) {
-  const start = { x: 0, z: 0, y: 80 };
-  if (type === 'landmark') {
-    const lm = lmById.get('taipei101') ?? air.landmarks[0]; // 地標衝刺：飛到 101（或第一個地標）
-    const target = { x: lm.x, z: lm.z, r: 140 };
-    raceWaypoints = [{ x: lm.x, z: lm.z }];
-    return { race: makeRace(RACE_TYPES.LANDMARK, [0, 1], { target }), waypoints: [{ x: lm.x, z: lm.z, y: RACE_RING_Y, r: 140 }], start };
-  }
-  // 穿圈航線：沿一條河佈 4 圈（風景航線）
-  const river = riverByName.get('基隆河') ?? RIVERS[0];
-  const pts = ringsAlongRiver(river.points, 4).map((p) => ({ x: p.x, z: p.z, r: RACE_RING_R }));
-  raceWaypoints = pts.map((p) => ({ x: p.x, z: p.z }));
-  return {
-    race: makeRace(RACE_TYPES.RING_ROUTE, [0, 1], { rings: pts }),
-    waypoints: pts.map((p) => ({ x: p.x, z: p.z, y: RACE_RING_Y, r: p.r })),
-    start,
-  };
-}
-
-/** 進/離競速：建/清賽道 + race 狀態。 @param {boolean} on */
-function setRaceActive(on) {
-  if (on) {
-    const built = buildRaceCourse(raceType);
-    race = built.race;
-    raceMarkers.build(built.waypoints, built.start);
-    raceCelebrated = false;
-  } else {
-    race = null;
-    raceMarkers.clear();
-  }
-}
 
 // —— 角落小地圖（任何模式顯示友/敵方位距離；HITL）——
 const minimap = new Minimap(/** @type {HTMLCanvasElement} */ ($('minimap')), { size: 160 });
@@ -424,6 +383,12 @@ net.onState = refreshDrivers;
 net.onSlotChange = refreshDrivers;
 net.connect();
 refreshDrivers();
+
+// —— 競速控制器接線（glue 在 missions/race-controller.js；行為與內嵌版一致）——
+const raceCtl = new RaceController(scene, {
+  lmById, riverByName, rivers: RIVERS, audio, toast, states, wasDriven, maxSlots: MAX_SLOTS,
+  getAir: () => air, getCurAirportId: () => curAirportId, getRaceType: () => raceType,
+});
 
 // —— 音效（瀏覽器規定：第一次 gesture 才出聲）——（audio 實例在天氣區塊前已建）
 function enableAudio() {
@@ -531,7 +496,7 @@ function applyPlayMode(mode) {
   renderModeBtn();
   if (playMode === 'dogfight') { dogfight.setMode(dogfightMode); resetAiProgress(); } // 設子模式旗標（balloons/pvp/ai）
   dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球/敵機或清場打玩家
-  setRaceActive(playMode === 'race');           // 進/離競速：建/清賽道（起點+航圈+終點）
+  raceCtl.setActive(playMode === 'race');       // 進/離競速：建/清賽道（起點+航圈+終點）
   net.sendMode(playMode);                       // 廣播給遙控器 → 換 context 鍵（發射/換武器）
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
@@ -576,7 +541,7 @@ for (const b of document.querySelectorAll('#raceRow .set-opt')) {
     const r = b.getAttribute('data-race');
     if (!r) return;
     raceType = r;
-    if (playMode === 'race') setRaceActive(true); // 即時換賽道型（重建賽道+race）
+    if (playMode === 'race') raceCtl.setActive(true); // 即時換賽道型（重建賽道+race）
     renderModeMenuUI();
   });
 }
@@ -602,7 +567,7 @@ function renderCollection() {
   $('routeCollectionCount').textContent = `航線 ${collection.routes.size}/${ROUTE_IDS.length}`;
   $('netCelebrateReplay').style.display = collection.networkCelebrated ? 'inline-block' : 'none';
   // v5.2 競速紀錄：每條賽道的最佳成績與完賽次數（雙人共享）
-  const raceRows = Object.entries(raceRecords).map(([k, r]) => {
+  const raceRows = Object.entries(raceCtl.records).map(([k, r]) => {
     const [apId, type] = k.split(':');
     const apName = airportSpec(apId)?.name ?? apId;
     return `<li class="lit">🏆 ${apName}・${RACE_LABELS[type] ?? type}<small>最佳 ${(r.bestMs / 1000).toFixed(1)} 秒・完賽 ${r.runs} 次</small></li>`;
@@ -1087,68 +1052,6 @@ function checkPlaneCollision(now) {
   for (let i = 0; i < MAX_SLOTS; i++) { toast(i, '✈️💥✈️ 兩機相撞！'); handleMishap(i); } // gentle ❤️−1 / real 冒煙→墜毀
 }
 
-/** 競速每步：起飛即各自開始計時 → 依序穿圈/到終點 → 名次（落後不淘汰、完賽都報名次）。 @param {number} now */
-function updateRace(now) {
-  const r = race;
-  if (!r) return;
-  for (let i = 0; i < MAX_SLOTS; i++) {
-    if (!wasDriven[i]) continue;
-    const racer = r.racers[i];
-    if (!racer) continue;
-    const s = states[i];
-    if (!racer.started && s.mode === 'flying') { racer.started = true; racer.startAt = now; toast(i, '🏁 出發！'); } // 各自獨立計時
-    if (!racer.started || racer.finished) continue;
-    const ev = updateRacer(r, i, { x: s.pos.x, z: s.pos.z }, now);
-    if (!ev) continue;
-    if (ev.type === 'ring') { audio.lockTone(); toast(i, `✅ 第 ${ev.ringIndex} 圈！`); }
-    else if (ev.type === 'finish') handleRaceFinish(i, ev.finishTime);
-  }
-  const maxPassed = Math.max(0, ...r.slots.map((sl) => r.racers[sl]?.ringIndex ?? 0)); // 過圈淡化用領先進度
-  raceMarkers.setProgress(maxPassed);
-}
-
-/** 完賽：報名次（友善＝落後也有名次）＋收集簿記最佳成績；全員完賽放煙火。 @param {number} i @param {number} finishTime */
-function handleRaceFinish(i, finishTime) {
-  if (!race) return;
-  const rank = ranking(race).find((r) => r.slot === i)?.rank ?? 1;
-  toast(i, `🏁 第 ${rank} 名！${(finishTime / 1000).toFixed(1)} 秒`);
-  audio.missionSuccess();
-  // v5.2 競速收集簿：記錄本次、破紀錄再補一個大回饋
-  const rec = recordRaceRun(raceRecords, courseKey(curAirportId, raceType), finishTime);
-  saveRaceRecords(localStorage, raceRecords);
-  if (rec.isNewBest && rec.prevBestMs != null) { toast(i, `🥇 新紀錄！快了 ${((rec.prevBestMs - finishTime) / 1000).toFixed(1)} 秒`); audio.landingChime(); }
-  else if (rec.isNewBest) toast(i, '📖 首次完賽，記進收集簿！');
-  if (allFinished(race) && !raceCelebrated) { // 全員完賽一次性慶祝
-    raceCelebrated = true;
-    audio.fireworks();
-    for (let s = 0; s < MAX_SLOTS; s++) if (wasDriven[s]) toast(s, '🎉 大家都完賽了！');
-  }
-}
-
-/** 競速計分卡（TaskSlot）：計時 + 名次/進度 + 下一目標箭頭。 @param {number} i @param {import('./flight/flight-model.js').PlaneState} s @param {number} now */
-function raceHudText(i, s, now) {
-  if (!race) return '';
-  const racer = race.racers[i];
-  if (!racer) return '';
-  if (racer.finished) {
-    const rank = ranking(race).find((r) => r.slot === i)?.rank ?? 1;
-    const best = raceRecords[courseKey(curAirportId, raceType)]?.bestMs;
-    const bestTxt = best ? `　🏆 最佳 ${(best / 1000).toFixed(1)}s` : '';
-    return `🏁 完賽 第 ${rank} 名　⏱ ${((racer.finishTime ?? 0) / 1000).toFixed(1)}s${bestTxt}`;
-  }
-  const t = racer.started ? ((now - racer.startAt) / 1000).toFixed(1) : '0.0';
-  const wp = raceType === 'landmark' ? raceWaypoints[0] : raceWaypoints[racer.ringIndex];
-  let lead = '';
-  if (wp && s.mode === 'flying') {
-    const bearing = Math.atan2(wp.x - s.pos.x, -(wp.z - s.pos.z));
-    const rel = wrapAngle(bearing - s.heading);
-    const dist = Math.hypot(wp.x - s.pos.x, wp.z - s.pos.z);
-    lead = `<span class="t-arrow" style="transform:rotate(${rel}rad)">⬆️</span> ${(dist / 1000).toFixed(1)}km　`;
-  }
-  const prog = raceType === 'landmark' ? '衝終點🟢' : `第 ${racer.ringIndex + 1}/${raceWaypoints.length} 圈`;
-  return `${lead}⏱ ${t}s　${prog}`;
-}
-
 /** 瞄準框（每視口一個）：空戰飛行時顯示。
  * 無鎖定時置中偏小（搜尋態），鎖定後投影追目標 + locked 脈動。
  * @param {number} i
@@ -1585,7 +1488,7 @@ function loop(/** @type {number} */ now) {
       }
     }
     if (playMode === 'dogfight') updateDogfight(now); // 空戰：鎖定/發射/彈丸/命中
-    else if (playMode === 'race') updateRace(now);     // 競速：計時/穿圈/名次
+    else if (playMode === 'race') raceCtl.update(now); // 競速：計時/穿圈/名次
     checkPlaneCollision(now); // 兩機相撞（溫和/真實受損）
     ambientDep.update(DT);    // v5.2 排隊環境機（未啟用＝無事）
     acc -= DT;
@@ -1627,7 +1530,7 @@ function loop(/** @type {number} */ now) {
       }
       hud.setTask(i, card);
     } else if (playMode === 'race') { // 競速計分卡（TaskSlot）：計時 + 名次/進度 + 下一目標箭頭
-      hud.setTask(i, raceHudText(i, s, now));
+      hud.setTask(i, raceCtl.hudText(i, s, now));
     }
     hud.setStatus(i, statusHtml(conseq[i])); // StatusSlot：❤️/後果模式
     if (s.mode === 'flying') {
@@ -1680,7 +1583,7 @@ function loop(/** @type {number} */ now) {
   updateCruiseHud(); // V5 雲上巡航 overlay（進度/ETA/目的地）
   updateGroundNav(now); // V4 地面導航（ATR 在地面 → 跟我車/綠中線燈/ATC 文字）
   updateAirCorridor(now); // V4.1 空中走廊（ATR 空中 → 離場/進場穿越環 + ATC）
-  if (playMode === 'race') raceMarkers.pulse(now / 1000); // 賽道輕微脈動（好找）
+  if (playMode === 'race') raceCtl.markers.pulse(now / 1000); // 賽道輕微脈動（好找）
   const wfi = wasDriven.findIndex(Boolean); // 天氣：雨跟著首架在線飛機（否則機場上空）
   weatherRenderer.update(frame, wfi >= 0 ? states[wfi].pos : { x: 0, y: 300, z: 0 });
   airportLife.update(frame, (WIND_FROM_DEG * Math.PI) / 180, curForces().windSpeed); // 雷達轉 + 風向袋對風
@@ -1708,8 +1611,8 @@ requestAnimationFrame(loop);
   get dogfightMode() { return dogfightMode; },
   get planeId() { return planeId; },
   get raceType() { return raceType; },
-  get race() { return race; },
-  raceMarkers, // v2.1-1 e2e：戳賽道標記數
+  get race() { return raceCtl.race; },
+  raceMarkers: raceCtl.markers, // v2.1-1 e2e：戳賽道標記數
   get weather() { return weather.type; }, // v3.0-1 e2e/dev
   setWeather: (/** @type {string} */ t) => { weather.type = t; applyEnv(); },
   rollWeather: () => { rollAndApplyWeather(); return weather.type; },
