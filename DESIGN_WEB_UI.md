@@ -1,7 +1,7 @@
 # 🎨 台北小飛官 — Web UI 設計語言（玩具櫃 web 版）
 
 > v1.1-0 foundation。這是 **UI 層的 B1**：設計一次 seam，V1–V5 後面填槽位不重畫。
-> 北極星 [`ROADMAP.md`](ROADMAP.md) §4 v1.1-0；工法基準 §9（UI 起跑線＝`../spec/DESIGN_CRAFT_GUIDE.md` 的 TactilePress + 多層表面 + haptic 政策，web 重做）。
+> 北極星 [`ROADMAP.md`](ROADMAP.md) §4 v1.1-0；工法基準 §9（UI 起跑線＝`spec/DESIGN_CRAFT_GUIDE.md` 的 TactilePress + 多層表面 + haptic 政策，web 重做）。
 >
 > **鐵律：維持玩具櫃 / voxel-toybox 識別，把 UI 系統化——不換風格。** 本檔是 display HUD 與 remote
 > 共用的 token + 槽位契約**單一來源**。色值/圓角/Tactile/haptic 一律引用本檔的 CSS 變數，不散落各檔硬編。
