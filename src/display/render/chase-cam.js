@@ -21,15 +21,16 @@ export class ChaseCam {
    * @param {number} dt
    * @param {number} [shake] 亂流鏡頭微晃幅度 0..1（v3.0-2，極輕、可關；減暈）
    * @param {number} [scale] 機體大小倍率（大機如 A330 把鏡頭往後/上拉，避免鑽進機身；小機=1）
+   * @param {{back?:number, up?:number}} [mul] 機種鏡頭倍率微調（plane-specs model.cam；高尾翼機下降時需更高更遠）
    */
-  update(s, dt, shake = 0, scale = 1) {
+  update(s, dt, shake = 0, scale = 1, mul = {}) {
     if (!this._init) this._heading = s.heading;
     // HITL 2026-06-21/07-02：位置在世界座標 lerp 會在轉彎時橫向落後（四分之三斜視＝偏右後）。
     // 改為「方位角域平滑」：相機方位角追 heading，位置由平滑後方位直接算 → 任何轉速下恆在正後方，
     // 只剩小角度延遲（甩鏡頭感由角域 damping 6.0 吸收，減暈拍板不變）。
     this._heading = wrapAngle(this._heading + angDiff(this._heading, s.heading) * expDamp(6.0, dt));
     const dx = Math.sin(this._heading), dz = -Math.cos(this._heading);
-    const back = BACK * scale, up = UP * scale, ahead = AHEAD * scale;
+    const back = BACK * scale * (mul.back ?? 1), up = UP * scale * (mul.up ?? 1), ahead = AHEAD * scale;
     const targetPos = new THREE.Vector3(
       s.pos.x - dx * back,
       Math.max(s.pos.y + up, 3), // 地面滾行時不鑽進地下

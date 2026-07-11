@@ -403,6 +403,15 @@ $('soundHint').style.display = 'block';
 document.addEventListener('visibilitychange', () => { if (document.hidden) audio.suspend(); else audio.resume(); });
 window.addEventListener('pagehide', () => audio.suspend());
 
+/**
+ * modal 容器本身即全螢幕半透明 backdrop（卡片是子元素）：點卡片外空白處＝關閉。
+ * 用 pointerdown 判 e.target===容器：卡片內按下再拖出去放開不會誤關（HITL 2026-07-11）。
+ * @param {HTMLElement} el
+ */
+function closeOnBackdrop(el) {
+  el.addEventListener('pointerdown', (e) => { if (e.target === el) el.classList.add('hidden'); });
+}
+
 // —— 設定面板（後果軸三檔 + ❤️ 上限）——
 const settingsEl = $('settings');
 function applySettings() {
@@ -431,6 +440,7 @@ function renderSettingsUI() {
 }
 $('settingsBtn').addEventListener('click', () => { renderSettingsUI(); settingsEl.classList.remove('hidden'); });
 $('settingsClose').addEventListener('click', () => settingsEl.classList.add('hidden'));
+closeOnBackdrop(settingsEl);
 for (const b of document.querySelectorAll('#modeRow .set-opt')) {
   b.addEventListener('click', () => {
     const m = b.getAttribute('data-mode');
@@ -524,6 +534,7 @@ function setPlane(id) {
 
 playModeBtn.addEventListener('click', () => { renderModeMenuUI(); modeMenuEl.classList.remove('hidden'); });
 $('modeMenuClose').addEventListener('click', () => modeMenuEl.classList.add('hidden'));
+closeOnBackdrop(modeMenuEl);
 for (const b of document.querySelectorAll('#pmRow .set-opt')) {
   b.addEventListener('click', () => { const m = b.getAttribute('data-pm'); if (m) { applyPlayMode(m); renderModeMenuUI(); } });
 }
@@ -576,6 +587,7 @@ function renderCollection() {
 }
 $('collectionBtn').addEventListener('click', () => { renderCollection(); collectionEl.classList.remove('hidden'); });
 $('collectionClose').addEventListener('click', () => collectionEl.classList.add('hidden'));
+closeOnBackdrop(collectionEl);
 
 // —— 台北飛透透大慶祝（一次性 gate；收集簿可重看）——
 const celebrationEl = $('celebration');
@@ -587,6 +599,7 @@ function triggerCelebration(title = CELEB_LANDMARK.title, sub = CELEB_LANDMARK.s
   celebrationEl.classList.remove('hidden'); audio.fireworks();
 }
 $('celebrationClose').addEventListener('click', () => celebrationEl.classList.add('hidden'));
+closeOnBackdrop(celebrationEl);
 $('celebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration(); });
 $('netCelebrateReplay').addEventListener('click', () => { collectionEl.classList.add('hidden'); triggerCelebration('九航線全通！🎉', '你飛遍台灣九座機場的天空，成為真正的小飛官！👏'); });
 
@@ -779,6 +792,7 @@ function refreshRouteInfo() {
 
 $('routeMapBtn').addEventListener('click', () => { mapPendingDest = null; renderRouteMap(); routeMapEl.classList.remove('hidden'); });
 $('routeMapClose').addEventListener('click', () => routeMapEl.classList.add('hidden'));
+closeOnBackdrop(routeMapEl);
 routeDepartBtn.addEventListener('click', () => {
   if (!mapPendingDest) return;
   const r = routesFrom(curAirportId).find((rt) => routeOtherEnd(rt, curAirportId) === mapPendingDest);
@@ -1500,6 +1514,7 @@ function loop(/** @type {number} */ now) {
   // 鏡頭距離隨機體大小（大機把鏡頭往後/上拉，避免鑽進機身）：ATR(27)→1、A330(50)→~1.8、voxel→1。
   const _m = planeSpec(planeId).model;
   const camScale = Math.max(1, (isGlbModel(_m) ? _m.lengthM : 12) / 28);
+  const camMul = (isGlbModel(_m) ? _m.cam : undefined) ?? {}; // 機種鏡頭微調（B737/A330 高尾翼再拉遠拉高）
   const views = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
@@ -1507,7 +1522,7 @@ function loop(/** @type {number} */ now) {
     planes[i].sync(states[i], lastInputs[i].th, frame, env.groundY);
     // 亂流鏡頭微晃（只真實模式 + 設定開；安全/溫和或關閉＝0 完全不晃，減暈）
     const shake = (conseq[i].mode === 'real' && settings.camShake && states[i].mode === 'flying') ? curForces().turb : 0;
-    cams[i].update(states[i], frame, shake, camScale);
+    cams[i].update(states[i], frame, shake, camScale, camMul);
     views.push(cams[i]);
   }
   labels.update(states.filter((_, i) => wasDriven[i]).map((s) => s.pos));

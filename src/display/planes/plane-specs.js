@@ -13,9 +13,10 @@ import { f16Body, f16Gear } from '../../voxel/models/f16.js';
 /**
  * @typedef {import('../../voxel/build.js').VoxelModel} VoxelModel
  * @typedef {{ body:VoxelModel, gear:VoxelModel, prop?:VoxelModel, propPos?:{x:number,y:number,z:number} }} PlaneModel
- * @typedef {{ glb:string, lengthM:number, yaw?:number, gearNodes?:string[] }} GlbModel
+ * @typedef {{ glb:string, lengthM:number, yaw?:number, gearNodes?:string[], cam?:{back?:number, up?:number} }} GlbModel
  *   V4 民航機：CC0/CC-BY low-poly GLB（runtime 過 assets/glb-model.js normalize 管線，§11 共存）。
  *   glb＝public 路徑；lengthM＝最長水平邊縮到幾公尺；yaw＝機鼻朝向修正(rad，待 HITL 校正)。
+ *   cam＝追焦鏡頭 back/up 倍率（疊在 lengthM 比例縮放上；高尾翼機下降時鏡頭要更高更遠，HITL 校正）。
  *   gearNodes（v5.2-4）＝模型內「獨立起落架 node 名」清單：有給＝真收放（scale.y 縮往 pivot），
  *   沒給＝疊參數化 voxel 假輪組（plane-entity._buildGlbGear）。
  * @typedef {{
@@ -103,7 +104,8 @@ export const PLANE_SPECS = {
     fuelSec: 2200, // 大油箱長航程（range≈396km，飛得到所有九機場含金門/馬祖）
     // v5.2：專屬窄體 GLB（Mauro3D "Low Poly Airliner"，CC-BY 4.0，A320 體、翼吊雙發、3.5k tris）。
     // 起落架＝模型原生獨立 node（鼻輪+雙主輪，pivot 在頂）→ 真收放；yaw=π（垂尾在 -Z 端＝機鼻原朝 +Z，頂點掃描驗證）。
-    model: { glb: '/models/low_poly_airliner.glb', lengthM: 38, yaw: Math.PI, gearNodes: ['Cylinder.001', 'Cylinder.002', 'Cylinder.003'] },
+    // cam：窄體尾翼高，下降時鏡頭再拉遠拉高一點才不會被機尾頂到（HITL 2026-07-11 回報，數值待真機校正）
+    model: { glb: '/models/low_poly_airliner.glb', lengthM: 38, yaw: Math.PI, gearNodes: ['Cylinder.001', 'Cylinder.002', 'Cylinder.003'], cam: { back: 1.15, up: 1.35 } },
     unlock: { flightMin: 45, landings: 15 }, // v1.2 解鎖：介於 ATR 與 A330
   },
   // A330 廣體客機 —— tone ladder 最仿真端（大、最重、最慢轉、最長跑道）。clean-belly low-poly GLB。
@@ -120,7 +122,8 @@ export const PLANE_SPECS = {
     },
     dims: { wingspan: 60, minRunwayLength: 1800 }, // 廣體：翼展 ~60m、最長跑道
     fuelSec: 3000, // 廣體長程
-    model: { glb: '/models/a330.glb', lengthM: 50, yaw: Math.PI }, // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-20）
+    // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-20）；cam：廣體同 B737 拉遠拉高（HITL 2026-07-11，待真機校正）
+    model: { glb: '/models/a330.glb', lengthM: 50, yaw: Math.PI, cam: { back: 1.1, up: 1.3 } },
     unlock: { flightMin: 60, landings: 20 }, // v1.2 解鎖：廣體最高門檻
   },
 };

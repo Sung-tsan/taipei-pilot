@@ -147,6 +147,14 @@ export class PlaneEntity {
       if (token !== this._loadToken) return; // 已切換到別的模型
       const inst = tmpl.clone(true);
       inst.rotation.y = desc.yaw ?? 0;       // 機鼻朝向修正
+      // fitToLength 的 x/z 置中是在未旋轉座標算的，而 position 套在 rotation 之外（T·R·S）：
+      // 幾何偏心 c 經 yaw 後變成 -c + R·c ＝ 偏移翻倍甩出（a330 橫偏 ~10m＝鏡頭像在右後方；
+      // B737 縱偏 ~19m＝鏡頭貼機尾，下降穿模）。旋轉後重量 bbox 拉回置中（HITL 2026-07-11）。
+      if (inst.rotation.y !== 0) {
+        const c = new THREE.Box3().setFromObject(inst).getCenter(new THREE.Vector3());
+        inst.position.x -= c.x;
+        inst.position.z -= c.z;
+      }
       if (hasRealGear) {
         for (const name of /** @type {string[]} */ (desc.gearNodes)) {
           const n = inst.getObjectByName(name);
