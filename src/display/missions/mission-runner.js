@@ -33,6 +33,19 @@ export class MissionRunner {
     this._assign(slot, pickNextMission(this.deps.pool, planePos, this.done[slot]), planePos);
   }
 
+  /**
+   * 清空一個 slot 的任務進度（done 記錄 + 進行中任務），不動其他 slot。
+   * 換人接手同一 slot 時呼叫（見 main.js refreshDrivers 的 driven && !wasDriven[i] 判斷點）——
+   * 否則新玩家會繼承前一位在這個 slot 做過的任務，pickNextMission 會默默把它們濾掉。
+   * @param {number} slot
+   */
+  reset(slot) {
+    this.done[slot] = new Set();
+    this.current[slot] = null;
+    this.ringIndex[slot] = 0;
+    this.rings[slot] = [];
+  }
+
   /** @param {number} slot @param {any|null} mission @param {{x:number,z:number}} planePos */
   _assign(slot, mission, planePos) {
     this.current[slot] = mission;

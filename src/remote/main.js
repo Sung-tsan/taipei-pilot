@@ -193,6 +193,17 @@ net.onState = () => {
     fullScreen.classList.remove('hidden');
     return;
   }
+  // 剛從候補佇列被遞補（server 主動推 welcome，不是使用者重整）：
+  // 收起「機庫滿了」畫面，回到原本該在的地方繼續玩。
+  if (!fullScreen.classList.contains('hidden')) {
+    fullScreen.classList.add('hidden');
+    if (calibrated) {
+      controlScreen.classList.remove('hidden');
+      controlScreen.style.display = 'grid';
+    } else {
+      calScreen.classList.remove('hidden');
+    }
+  }
   if (net.slot !== null) {
     slotName.textContent = `${SLOT_NAMES[net.slot]} ✈️`;
     slotBanner.style.background = SLOT_COLORS[net.slot];
@@ -273,7 +284,10 @@ checkOrientation();
 // 背景化時停止亂送（鎖屏由 server 心跳判斷斷線）
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  if (!net.connected && !net.slotsFull) net.connect();
+  // 排隊候補時 socket 通常還活著（server 不關閉、遞補時會主動推 welcome），
+  // 不能只看 slotsFull 跳過重連——那樣如果背景時 socket 真的斷了會永遠卡住。
+  // 改判斷 socket 是否還活著：活著就不用管，死了（不論在不在候補）都要重連。
+  if (!net.connected && !net.isSocketAlive()) net.connect();
   tilt.restart(); // 背景化常讓 OS 暫停 sensor，回前景主動重掛
 });
 

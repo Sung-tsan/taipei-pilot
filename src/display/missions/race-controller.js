@@ -41,22 +41,38 @@ export class RaceController {
     /** @type {{x:number,z:number}[]} */ this.waypoints = [];
   }
 
+  /**
+   * 目前實際在駕駛（wasDriven）的 slot 清單，依 slot 序。
+   * 開賽當下（setActive(true) → buildCourse）呼叫一次即鎖定本場參賽名單：
+   * 賽中新加入的玩家不會被補進本場（下一場換賽道型或重進競速才會重新算）；
+   * 賽中離開的參賽者仍留在 race.slots 裡，update() 的 `!d.wasDriven[i]` 短路
+   * 讓他停止推進、也不會被判完賽——與現有程式碼行為一致，不特別清除。
+   * @returns {number[]}
+   */
+  activeSlots() {
+    const d = this.deps;
+    const slots = [];
+    for (let i = 0; i < d.maxSlots; i++) if (d.wasDriven[i]) slots.push(i);
+    return slots;
+  }
+
   /** 依 raceType 產生賽道（race.js course + 視覺 waypoints + 起點）。 @param {string} type */
   buildCourse(type) {
     const d = this.deps;
+    const slots = this.activeSlots(); // 動態參賽名單：只有當下實際駕駛的 slot 才需要完賽（修復單人「全員完賽」永不觸發）
     const start = { x: 0, z: 0, y: 80 };
     if (type === 'landmark') {
       const lm = d.lmById.get('taipei101') ?? d.getAir().landmarks[0]; // 地標衝刺：飛到 101（或第一個地標）
       const target = { x: lm.x, z: lm.z, r: 140 };
       this.waypoints = [{ x: lm.x, z: lm.z }];
-      return { race: makeRace(RACE_TYPES.LANDMARK, [0, 1], { target }), waypoints: [{ x: lm.x, z: lm.z, y: RACE_RING_Y, r: 140 }], start };
+      return { race: makeRace(RACE_TYPES.LANDMARK, slots, { target }), waypoints: [{ x: lm.x, z: lm.z, y: RACE_RING_Y, r: 140 }], start };
     }
     // 穿圈航線：沿一條河佈 4 圈（風景航線）
     const river = d.riverByName.get('基隆河') ?? d.rivers[0];
     const pts = ringsAlongRiver(river.points, 4).map((p) => ({ x: p.x, z: p.z, r: RACE_RING_R }));
     this.waypoints = pts.map((p) => ({ x: p.x, z: p.z }));
     return {
-      race: makeRace(RACE_TYPES.RING_ROUTE, [0, 1], { rings: pts }),
+      race: makeRace(RACE_TYPES.RING_ROUTE, slots, { rings: pts }),
       waypoints: pts.map((p) => ({ x: p.x, z: p.z, y: RACE_RING_Y, r: p.r })),
       start,
     };

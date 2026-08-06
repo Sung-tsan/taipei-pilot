@@ -173,6 +173,58 @@ describe('Relay slot 管理', () => {
     expect(h.last('d')).toMatchObject({ t: 'remote_left', slot: 0 });
   });
 
+  // —— 滿員自動遞補（第三支手機排隊，slot 一釋出就自動加入，不用重整）——
+  it('兩台連滿 → 第三台排隊；一台斷線 grace 過期 → 第三台自動獲得 slot', () => {
+    h.hello('d', 'display');
+    h.hello('a', 'remote');
+    h.hello('b', 'remote');
+    h.hello('c', 'remote'); // 滿了 → 排隊
+    expect(h.last('c')).toMatchObject({ t: 'slots_full' });
+    expect(h.relay.waiting).toEqual(['c']);
+
+    h.relay.onDisconnect('a'); // slot 0 → grace
+    expect(h.relay.waiting).toEqual(['c']); // grace 期間還沒真的空出來，還在排隊
+    vi.advanceTimersByTime(30001); // grace 逾時 → slot 真的釋出
+
+    expect(h.relay.waiting).toEqual([]); // 已被遞補、離開佇列
+    expect(h.inbox.c.find((m) => m.t === 'welcome')).toMatchObject({ t: 'welcome', slot: 0 });
+    expect(h.relay.slots[0]).toMatchObject({ state: 'occupied', clientId: 'c' });
+    // display 應該先看到 remote_gone（slot 0 空出）再看到 remote_joined（遞補進來）
+    const dTail = h.inbox.d.slice(-2);
+    expect(dTail).toEqual([{ t: 'remote_gone', slot: 0 }, { t: 'remote_joined', slot: 0 }]);
+  });
+
+  it('明確離開（display reset 清場）→ 立刻把空出的 slot 分給候補佇列', () => {
+    h.hello('a', 'remote');
+    h.hello('b', 'remote');
+    h.hello('c', 'remote'); // 排隊
+    h.hello('d', 'display');
+    h.relay.onMessage('d', JSON.stringify({ t: 'reset' }));
+    expect(h.relay.waiting).toEqual([]);
+    expect(h.inbox.c.find((m) => m.t === 'welcome')).toMatchObject({ t: 'welcome', slot: 0 });
+    expect(h.relay.slots[0]).toMatchObject({ state: 'occupied', clientId: 'c' });
+    expect(h.relay.slots[1].state).toBe('empty'); // 只有一個候補者，另一 slot 仍空著
+  });
+
+  it('候補佇列依 FIFO 遞補；候補者中途斷線只從佇列摘除，不占 slot、不 crash、不影響其他候補者', () => {
+    h.hello('a', 'remote');
+    h.hello('b', 'remote');
+    h.hello('c', 'remote'); // 第一位候補
+    h.hello('e', 'remote'); // 第二位候補
+    expect(h.relay.waiting).toEqual(['c', 'e']);
+
+    expect(() => h.relay.onDisconnect('c')).not.toThrow(); // 候補中斷線
+    expect(h.relay.waiting).toEqual(['e']); // 只有 c 被摘除，不留殘影
+
+    h.relay.onDisconnect('a');
+    vi.advanceTimersByTime(30001); // slot 0 釋出
+
+    expect(h.relay.waiting).toEqual([]); // e 遞補走了，佇列清空
+    expect(h.inbox.e.find((m) => m.t === 'welcome')).toMatchObject({ t: 'welcome', slot: 0 });
+    expect(h.inbox.c ?? []).not.toContainEqual(expect.objectContaining({ t: 'welcome' })); // c 不該收到遲來的 slot
+    expect(h.relay.slots[0]).toMatchObject({ state: 'occupied', clientId: 'e' });
+  });
+
   it('壞訊息與越權訊息一律忽略', () => {
     h.hello('d', 'display');
     h.hello('a', 'remote');

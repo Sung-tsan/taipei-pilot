@@ -35,6 +35,8 @@ export class Relay {
     }));
     /** @type {string|null} */
     this.displayId = null;
+    /** @type {string[]} 候補佇列（FIFO）：slots_full 時掛在這裡，slot 一釋出就依序遞補 */
+    this.waiting = [];
   }
 
   /** 活性掃描（server 週期呼叫）：殭屍 remote（連線在、輸入停）→ 走斷線流程 */
@@ -113,6 +115,8 @@ export class Relay {
           slot.clientId = null;
           this._toDisplay({ t: 'remote_gone', slot: i });
         });
+        // 明確離開（display 主動清場）：清空後立刻把空出的 slot 分給候補佇列
+        this._promoteWaiting();
         return;
       }
       default:
@@ -131,7 +135,13 @@ export class Relay {
       this._broadcastToRemotes({ t: 'display_status', connected: false });
       return;
     }
-    if (client.role === 'remote' && client.slot !== null) {
+    if (client.role !== 'remote') return;
+
+    // 候補中斷線：不占 slot，只要從佇列摘除即可（防止洩漏；找不到也無害）
+    const qi = this.waiting.indexOf(clientId);
+    if (qi >= 0) this.waiting.splice(qi, 1);
+
+    if (client.slot !== null) {
       const slot = this.slots[client.slot];
       if (slot.clientId !== clientId) return; // 已被同 token 新連線接管
       slot.state = 'grace';
@@ -202,9 +212,19 @@ export class Relay {
     // 新連線：先到先佔
     const i = this.slots.findIndex((s) => s.state === 'empty');
     if (i < 0) {
+      // 機庫滿了：不關 socket——掛進候補佇列，slot 一釋出就自動遞補（不需使用者重整）
       this._send(clientId, encodeMsg({ t: 'slots_full' }));
+      if (!this.waiting.includes(clientId)) this.waiting.push(clientId);
       return;
     }
+    this._assignSlot(clientId, client, i);
+  }
+
+  /**
+   * 把 slot i 指派給 clientId（新連線先到先佔／候補遞補共用）。
+   * @param {string} clientId @param {ClientState} client @param {number} i
+   */
+  _assignSlot(clientId, client, i) {
     const slot = this.slots[i];
     slot.state = 'occupied';
     slot.token = this._makeToken();
@@ -220,11 +240,30 @@ export class Relay {
   _expireGrace(i) {
     const slot = this.slots[i];
     if (slot.state !== 'grace') return;
+    this._freeSlot(i);
+  }
+
+  /** slot 真正釋出（grace 逾時）：先通知 display，再看候補佇列有沒有人可以遞補。 @param {number} i */
+  _freeSlot(i) {
+    const slot = this.slots[i];
     slot.state = 'empty';
     slot.token = null;
     slot.clientId = null;
     slot.graceTimer = null;
     this._toDisplay({ t: 'remote_gone', slot: i });
+    this._promoteWaiting();
+  }
+
+  /** 候補佇列非空 + 有空 slot → 依 FIFO 依序遞補（可能一次補滿多個 slot）。 */
+  _promoteWaiting() {
+    while (this.waiting.length > 0) {
+      const i = this.slots.findIndex((s) => s.state === 'empty');
+      if (i < 0) break;
+      const clientId = /** @type {string} */ (this.waiting.shift());
+      const client = this.clients.get(clientId);
+      if (!client) continue; // 候補者已斷線（onDisconnect 理應已清過，防禦性跳過）
+      this._assignSlot(clientId, client, i);
+    }
   }
 
   /** @param {import('../shared/protocol.js').Msg} msg */

@@ -89,4 +89,24 @@ describe('MissionRunner 迴圈', () => {
     expect(runner.current[0].id).toBe('find_L2');
     expect(runner.current[1].id).toBe('find_L1'); // slot1 還在 L1（佇列獨立）
   });
+
+  it('reset(slot) 清空 done 與進行中任務（換人接手同一 slot 不繼承前任進度）', () => {
+    const { runner } = makeRunner(2);
+    runner.start(0, { x: 0, z: 0 });
+    runner.start(1, { x: 0, z: 0 });
+    runner.update(0, flying(0, 600, 0)); // slot0 完成 find_L1 → done[0] 有 find_L1
+    expect(runner.done[0].has('find_L1')).toBe(true);
+
+    runner.reset(0); // 新玩家接手 slot0
+    expect(runner.done[0].size).toBe(0);
+    expect(runner.current[0]).toBeNull();
+
+    // 重新供題後，前任做過的 find_L1 又出現在候選裡（新玩家拿到完整體驗）
+    runner.start(0, { x: 0, z: 0 });
+    expect(runner.current[0].id).toBe('find_L1');
+
+    // 另一 slot 的進度完全不受影響
+    expect(runner.current[1].id).toBe('find_L1');
+    expect(runner.done[1].size).toBe(0);
+  });
 });

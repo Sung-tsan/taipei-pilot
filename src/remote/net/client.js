@@ -83,11 +83,19 @@ export class RemoteNet {
       this._stopHeartbeat();
       this.connected = false;
       this.onState(this);
-      if (this._closed || this.slotsFull) return;
+      // 注意：機庫滿了時 server 不關 socket（掛進候補佇列，slot 一釋出就主動推 welcome
+      // 過來），所以這裡若真的 close 了，不管是不是候補中都代表連線真的斷了——一律重連，
+      // 重連時沒 token 就會照常排回候補佇列尾端，不用孩子重整頁面。
+      if (this._closed) return;
       setTimeout(() => this.connect(), this._backoff);
       this._backoff = Math.min(this._backoff * 1.6, 5000);
     };
     ws.onerror = () => ws.close();
+  }
+
+  /** socket 是否還活著（用於背景喚醒時判斷要不要主動重連，避免候補中重複開新連線）。 */
+  isSocketAlive() {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
   _startHeartbeat() {
