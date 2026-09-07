@@ -87,7 +87,7 @@ export const PLANE_SPECS = {
     unlock: { flightMin: 30, landings: 10 }, // v1.2 解鎖：民航機進階門檻
   },
   // B737 窄體幹線客機 —— tone ladder 民航中段（本島幹線、載客多、大油箱長航程）。
-  // 機體＝CC0/CC-BY low-poly GLB（§11，runtime 過 normalize）；目前以 a330 的 787 GLB 縮到窄體尺寸代用
+  // 機體＝CC-BY low-poly GLB（§11，runtime 過 normalize）；v5.2 Mauro3D 窄體專屬 GLB（見 CREDITS）。
   //（外型代用、玩法不受影響；專屬塗裝/航司＝資產軌缺口，見 POLISH_BACKLOG）。
   b737: {
     id: 'b737',
@@ -122,7 +122,8 @@ export const PLANE_SPECS = {
     },
     dims: { wingspan: 60, minRunwayLength: 1800 }, // 廣體：翼展 ~60m、最長跑道
     fuelSec: 3000, // 廣體長程
-    // yaw=π：機鼻原本朝後，轉 180°（HITL 2026-06-20）；cam：廣體同 B737 拉遠拉高（HITL 2026-07-11，待真機校正）
+    // P0-3：OGA "Jumbo Jet, Wide Body" CC0（~3176 tris，雙發寬體、clean-belly）取代 Poly 787 代用。
+    // yaw=π：機鼻朝 +Z、垂尾在 -Z（與 B737 同向）→ 轉 180° 對齊遊戲前進；cam：廣體拉遠拉高（HITL 2026-07-11，待真機校正）
     model: { glb: '/models/a330.glb', lengthM: 50, yaw: Math.PI, cam: { back: 1.1, up: 1.3 } },
     unlock: { flightMin: 60, landings: 20 }, // v1.2 解鎖：廣體最高門檻
   },

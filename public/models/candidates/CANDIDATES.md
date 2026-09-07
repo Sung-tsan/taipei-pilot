@@ -42,3 +42,9 @@
 - "Aeroplane" — Gilang Romadhan — https://poly.pizza/m/9VeIc0cybp4
 - "Small plane" — Poly by Google — https://poly.pizza/m/1uXmHq-ELhz （取向A）
 - "Small Airplane" — Vojtěch Balák — https://poly.pizza/m/7cvx6ex-xfL （取向B）
+
+## P0-3 staging notes（2026-09-07）
+- Live A330 已換成 OGA Jumbo Jet（CC0）→ `../a330.glb`；舊 Poly 787 代用備份為 `a330-poly-787-old.glb`。
+- `airplane-a3XrQkLNna9.glb`：Poly Pizza 11k-tris 雙發（較精緻）但單 mesh＋輪烤進機身，未上 live。
+- `Jetliner-oga.obj`：OGA 原始 OBJ（轉檔來源）。
+- Sketchfab Mauro3D 787（~9.4k，與 B737 同作者）需登入：https://sketchfab.com/3d-models/low-poly-boeing-787-dreamliner-50baa323fabd49a6b861096cb88e5c25
