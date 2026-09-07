@@ -145,6 +145,9 @@
     #modeMenu { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #0b0f18cc; }
     #modeMenu.hidden { display: none; }
     #dogfightSection.disabled { opacity: .4; pointer-events: none; }
+    /* P0-2：民航機選中時空戰選項／子模式區不出現（凍結 UI） */
+    #pmRow .set-opt[data-pm="dogfight"].civil-hidden { display: none !important; }
+    #dogfightSection.civil-hidden { display: none !important; }
     #raceSection.disabled { opacity: .4; pointer-events: none; }
     #modeMenuClose { background: var(--candy-green); color: var(--ui-bg); --press-shadow: var(--candy-green-d); padding: 14px 0; border-radius: var(--r-md); font-size: 18px; font-weight: 800; }
 

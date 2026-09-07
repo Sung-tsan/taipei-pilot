@@ -22,6 +22,7 @@ import { makePlane, stepPlane } from './flight/flight-model.js';
 import { collidePlane } from './flight/collision.js';
 import { PlaneEntity } from './planes/plane-entity.js';
 import { planeSpec, flightParams, PLANE_IDS, DEFAULT_PLANE, isGlbModel } from './planes/plane-specs.js';
+import { isCivilPlane, civilBlocksDogfight, coercePlayModeForPlane, showDogfightInModeMenu } from './planes/civil-mode.js';
 import { Dogfight } from './combat/dogfight.js';
 import { difficultyLevel, adaptiveHandicap } from './combat/enemy-ai.js';
 import { makeDodge, dodgeReady, triggerDodge, dodging, dodgeRoll, DODGE } from './combat/maneuver.js';
@@ -118,6 +119,12 @@ const runner = new MissionRunner(MAX_SLOTS, {
 let playMode = localStorage.getItem('tp_last_playMode') || 'mission'; // 記住上次玩法（雙線產品友好）；首次預設＝任務（與 e2e/spec 既定預設一致）
 let dogfightMode = 'balloons';
 let planeId = localStorage.getItem('tp_last_plane') || DEFAULT_PLANE;
+// P0-2：記住上次非空戰玩法；民航機開場若殘留 dogfight → 強制離開（不送武器 context）
+let lastNonDogfightMode = playMode !== 'dogfight' ? playMode : 'free';
+if (civilBlocksDogfight(planeId) && playMode === 'dogfight') {
+  playMode = lastNonDogfightMode || 'free';
+  localStorage.setItem('tp_last_playMode', playMode);
+}
 let missionTaught = false; // 任務模式首次教學瞬間（一次性）
 
 // —— 空戰（v2.0-2）：氣球靶 + 武器 + 對地紅區 ——
@@ -156,7 +163,7 @@ const SEQ_SEC = 5;          // 起飛排序「前面一架」等待
 const DEPART_RWY = /** @type {'r10'|'r28'} */ ('r10'); // 離場跑道頭（RWY10，與 spawnPose 起飛朝向一致）
 const DEPART_GATES = ['g3', 'g4']; // slot 0/1 離場登機門（中央門）
 /** 是否民航機（airliner tone）→ 走完整地面/空中走廊流程（ATR-72 / A330…）。 @param {string} id */
-const isCivil = (id) => planeSpec(id).tone === 'airliner';
+const isCivil = (id) => isCivilPlane(id);
 /** 空中走廊各 leg 的英文 ATC 語音（TTS；en ATC 較自然、國際本就英文）。 @type {Record<string,string>} */
 const CORRIDOR_VOICE = {
   climb: 'Climb on the departure.',
@@ -483,25 +490,37 @@ function renderModeMenuUI() {
   for (const b of document.querySelectorAll('#dmRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-dm') === dogfightMode);
   for (const b of document.querySelectorAll('#raceRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-race') === raceType);
   for (const b of document.querySelectorAll('#planeRow .set-opt')) b.classList.toggle('active', b.getAttribute('data-plane') === planeId);
+  // P0-2 凍結 UI：民航機選中時「空戰」選項不出現（非 disabled）
+  const showDf = showDogfightInModeMenu(planeId);
+  const dfBtn = document.querySelector('#pmRow .set-opt[data-pm="dogfight"]');
+  if (dfBtn) dfBtn.classList.toggle('civil-hidden', !showDf);
+  $('dogfightSection').classList.toggle('civil-hidden', !showDf);
   $('dogfightSection').classList.toggle('disabled', playMode !== 'dogfight'); // 子模式僅空戰可選
   $('raceSection').classList.toggle('disabled', playMode !== 'race'); // 賽道型僅競速可選
 }
 
 /** 套用玩法模式到所有在線 slot（切 HUD 契約 + 任務啟停 + 空戰靶場 + 廣播給 remote） @param {string} mode */
 function applyPlayMode(mode) {
-  playMode = mode;
+  // P0-2：民航機不可進空戰（選單隱藏以外的 API/殘留路徑也擋）
+  const fallback = (lastNonDogfightMode && lastNonDogfightMode !== 'dogfight') ? lastNonDogfightMode : 'free';
+  const blockedCivilDogfight = civilBlocksDogfight(planeId) && mode === 'dogfight';
+  playMode = coercePlayModeForPlane(planeId, mode, fallback);
+  if (playMode !== 'dogfight') lastNonDogfightMode = playMode;
   localStorage.setItem('tp_last_playMode', playMode);
   renderModeBtn();
   if (playMode === 'dogfight') { dogfight.setMode(dogfightMode); resetAiProgress(); } // 設子模式旗標（balloons/pvp/ai）
-  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球/敵機或清場打玩家
+  dogfight.setActive(playMode === 'dogfight'); // 進/離空戰：依子模式 spawn 氣球/敵機或清場打玩家（false → 清彈/鎖）
   raceCtl.setActive(playMode === 'race');       // 進/離競速：建/清賽道（起點+航圈+終點）
+  // 民航 session 不會是 dogfight → remote 不會拿到 FIRE/WEAPON_SWITCH context
   net.sendMode(playMode);                       // 廣播給遙控器 → 換 context 鍵（發射/換武器）
   for (let i = 0; i < MAX_SLOTS; i++) {
     if (!wasDriven[i]) continue;
     hud.applyMode(i, playMode);
     if (playMode === 'mission') runner.start(i, { x: states[i].pos.x, z: states[i].pos.z });
     else hud.setTask(i, '');
-    if (playMode === 'dogfight') {
+    if (blockedCivilDogfight) {
+      toast(i, '✈️ 民航機無法空戰，已離開空戰模式');
+    } else if (playMode === 'dogfight') {
       if (!dogfightTaught) {
         toast(i, '🔥 空戰！手機：🔥長按發射　🎯切武器　🌀翻滾閃避\n飛近自動鎖定，準星紅＝可打');
       } else {
@@ -518,6 +537,15 @@ function setPlane(id) {
   localStorage.setItem('tp_last_plane', planeId);
   planes.forEach((p) => p.setModel(planeSpec(planeId).model));
   for (let i = 0; i < MAX_SLOTS; i++) resetFuel(i); // 換機＝換油箱（新機種 fuelSec）
+  // P0-2：空戰中改選民航機 → 強制離開空戰（setActive false 清彈/鎖）+ toast
+  if (civilBlocksDogfight(planeId) && playMode === 'dogfight') {
+    const fallback = (lastNonDogfightMode && lastNonDogfightMode !== 'dogfight') ? lastNonDogfightMode : 'free';
+    applyPlayMode(fallback);
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      if (!wasDriven[i]) continue;
+      toast(i, '✈️ 民航機無法空戰，已離開空戰模式');
+    }
+  }
 }
 
 playModeBtn.addEventListener('click', () => { renderModeMenuUI(); modeMenuEl.classList.remove('hidden'); });
@@ -953,6 +981,7 @@ function taskHtml(i, s) {
 
 /** 空戰每步：換武器(上升緣)/對空鎖定/發射 + 彈丸推進 + 命中事件 @param {number} now */
 function updateDogfight(now) {
+  if (civilBlocksDogfight(planeId)) return; // P0-2：民航不可射擊（防衛）
   // 餵入「可命中玩家」清單（PvP 對手 + 敵機選目標都用；無敵暫退期間不可被命中）
   const players = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
