@@ -50,9 +50,14 @@ export function advanceCorridor(pts, pos, idx, reach = 700) {
   return i;
 }
 
-/** ATC 文字（依目前航點的 leg/label）。 @param {CorridorPoint|undefined} wp */
-export function corridorAtc(wp) {
+/**
+ * ATC 文字（依目前航點的 leg/label）。
+ * @param {CorridorPoint|undefined} wp
+ * @param {string} [airportName='松山'] 目的地／本場短名（P1-3：航線進場不再寫死松山）
+ */
+export function corridorAtc(wp, airportName = '松山') {
   if (!wp) return '';
-  const head = wp.leg === 'final' ? '🗼 松山進場' : wp.leg === 'climb' ? '🗼 松山離場' : '🗼 松山近場';
-  return `${head}：${wp.label}（目標高度 ${wp.alt}m）`;
+  const name = airportName || '松山';
+  const head = wp.leg === 'final' ? `🗼 ${name}進場` : wp.leg === 'climb' ? `🗼 ${name}離場` : `🗼 ${name}近場`;
+  return `${head}：${wp.label}（目標高度 ${Math.round(wp.alt)}m）`;
 }

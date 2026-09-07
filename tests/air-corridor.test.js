@@ -29,5 +29,6 @@ describe('空中走廊 air-corridor（v4.1）', () => {
     expect(corridorAtc(/** @type {any} */ (pts.at(-1)))).toContain('進場');
     expect(corridorAtc(/** @type {any} */ (pts.at(-1)))).toContain(/** @type {any} */ (pts.at(-1)).label);
     expect(corridorAtc(undefined)).toBe('');
+    expect(corridorAtc(/** @type {any} */ (pts.at(-1)), '高雄小港')).toContain('高雄小港進場');
   });
 });

@@ -14,9 +14,9 @@ export const SLOT_NAMES = /** @type {const} */ ([
  * CenterSlot 的瞬時 toast 不受此表節制（任何模式撞機都要 toast，見 Hud.toast）。
  */
 const MODE_SLOTS = {
-  // 自由飛（v1.1-0 唯一模式）：機種/高度/回家亮；任務卡與中央導引留空契約。
-  // StatusSlot 列入 eligible 是為 v1.1-1 的 ❤️ 在自由飛也能亮——本輪無內容故隱藏。
-  free: ['StatusSlot', 'ModeSlot', 'AltBand', 'HomeSlot'],
+  // 自由飛：機種/高度/回家/狀態；P1-3 起 TaskSlot 也 eligible（民航進場對正卡；無內容仍隱藏）。
+  // CenterSlot 仍隱藏（瞬時 toast 不靠此契約）。
+  free: ['TaskSlot', 'StatusSlot', 'ModeSlot', 'AltBand', 'HomeSlot'],
   // 任務模式（v1.1-4 接）：六槽全 eligible。
   mission: ['TaskSlot', 'StatusSlot', 'ModeSlot', 'CenterSlot', 'AltBand', 'HomeSlot'],
   // 空戰模式（v2.0-1 佔位，內容由 v2.0-5 填）：鎖定框→CenterSlot、彈藥/冷卻→StatusSlot、

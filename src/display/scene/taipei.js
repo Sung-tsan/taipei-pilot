@@ -46,7 +46,8 @@ function runwayLocal(x, z) {
 
 /**
  * @typedef {{ id:string, name:string, x:number, z:number, topY:number, clear:number,
- *             aabb:{minX:number,maxX:number,minZ:number,maxZ:number,h:number} }} LandmarkInfo
+ *             aabb:{minX:number,maxX:number,minZ:number,maxZ:number,h:number},
+ *             kind?: 'airport'|'landmark' }} LandmarkInfo
  */
 
 export function makeTaipei() {

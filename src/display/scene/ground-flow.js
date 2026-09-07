@@ -71,3 +71,71 @@ export function beginDepart(d, gate) {
   d.gate = gate;
   return d;
 }
+
+// —— P1-1 地面節奏表：短航班（預設）vs 真實（P1-6 UI 再開）——
+// 單位：秒（turnaroundMs 例外）。scripted 傻等＝boarding+push+pushDone+seq（不含玩家滑行）。
+/** @typedef {'shortHaul'|'realistic'} DepartPace */
+/** @typedef {{
+ *   boardSec: number, confirmAutoSec: number, pushSec: number,
+ *   pushDoneSec: number, seqSec: number, turnaroundMs: number,
+ * }} DepartTiming */
+
+/** @type {Record<DepartPace, DepartTiming>} */
+export const DEPART_TIMING = {
+  // 預設：精煉短航班。保留登機計數／後推／hold 儀式，砍死氣傻等。
+  shortHaul: {
+    boardSec: 2.5,
+    confirmAutoSec: 4,
+    pushSec: 2.4,
+    pushDoneSec: 0.55,
+    seqSec: 2.2,
+    turnaroundMs: 2500,
+  },
+  // 完整 ATC 等待（P1-6「真實模式」；本輪不當預設、表先備好）。
+  realistic: {
+    boardSec: 8,
+    confirmAutoSec: 12,
+    pushSec: 5,
+    pushDoneSec: 1.2,
+    seqSec: 8,
+    turnaroundMs: 8000,
+  },
+};
+
+/** 預設節奏＝短航班（SPEC §1／§7 #4）。 */
+export const DEFAULT_DEPART_PACE = /** @type {DepartPace} */ ('shortHaul');
+
+/**
+ * 取節奏表。未知 pace → shortHaul。
+ * @param {DepartPace|string} [pace]
+ * @returns {DepartTiming}
+ */
+export function departTiming(pace = DEFAULT_DEPART_PACE) {
+  return DEPART_TIMING[/** @type {DepartPace} */ (pace)] ?? DEPART_TIMING.shortHaul;
+}
+
+/**
+ * P1-6：真實模式開關 → DepartPace。開＝realistic，關／缺省＝shortHaul。
+ * @param {boolean} [realisticOn]
+ * @returns {DepartPace}
+ */
+export function departPaceFromRealistic(realisticOn = false) {
+  return realisticOn ? 'realistic' : 'shortHaul';
+}
+
+/**
+ * 腳本化地面死氣總秒數（確認鍵立刻按）：boarding + push + pushDone + holdShort。
+ * 不含玩家滑行（綠線段），也不含確認逾時。
+ * @param {DepartTiming} t
+ */
+export function scriptedGroundSec(t) {
+  return t.boardSec + t.pushSec + t.pushDoneSec + t.seqSec;
+}
+
+/**
+ * 最長腳本化死氣（確認鍵完全不按、走 auto）：scripted + confirmAuto。
+ * @param {DepartTiming} t
+ */
+export function scriptedGroundSecWorst(t) {
+  return scriptedGroundSec(t) + t.confirmAutoSec;
+}

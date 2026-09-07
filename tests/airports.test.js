@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AIRPORTS, AIRPORT_IDS, HOME_AIRPORT, DEMO_AIRPORTS, ROUTES, ROUTE_IDS,
-  airport, route, routesFrom, routeOtherEnd, haversineKm, routeDistanceKm, mapXY, MAP_BOUNDS,
+  airport, airportNameplate, route, routesFrom, routeOtherEnd, haversineKm, routeDistanceKm, mapXY, MAP_BOUNDS,
 } from '../src/display/scene/airports.js';
 import { WEATHER_PROFILES } from '../src/display/weather/weather.js';
 
@@ -106,5 +106,19 @@ describe('全圖投影 + 航程', () => {
       expect(a.lng).toBeGreaterThanOrEqual(MAP_BOUNDS.lngMin);
       expect(a.lng).toBeLessThanOrEqual(MAP_BOUNDS.lngMax);
     }
+  });
+});
+
+describe("P1-4 airport accent", () => {
+  it("nine unique accents; nameplate is name+ICAO", () => {
+    const accents = new Set();
+    for (const id of AIRPORT_IDS) {
+      expect(AIRPORTS[id].accent).toMatch(/^#[0-9a-fA-F]{6}$/);
+      accents.add(AIRPORTS[id].accent.toLowerCase());
+      const np = airportNameplate(id);
+      expect(np.split("\n")[0]).toBe(AIRPORTS[id].name);
+      expect(np.split("\n")[1]).toBe(AIRPORTS[id].icao);
+    }
+    expect(accents.size).toBe(9);
   });
 });

@@ -20,6 +20,7 @@
  *   terrain: Terrain,
  *   tier: 'intro'|'inter'|'expert', // 難度梯度（解鎖順序）
  *   signature: string,     // 招牌挑戰（一句話，HUD 進場提示）
+ *   accent: string,        // P1-4 機場識別色（航廈／生活感／名牌副色；一場一色）
  *   windScale?: number,    // V3 招牌側風倍率（×weatherForces.windSpeed；澎湖強側風；缺省 1）
  *   turbScale?: number,    // V3 招牌亂流倍率（×weatherForces.turb；花東山區亂流；缺省 1）
  *   home?: boolean,        // 是否母場（松山＝預設起點）
@@ -32,15 +33,15 @@
  * @type {Record<string, AirportSpec>}
  */
 export const AIRPORTS = {
-  tsa: { id: 'tsa', name: '台北松山', icao: 'RCSS', lat: 25.0694, lng: 121.5521, runway: { headingDeg: 100, lengthM: 2605, widthM: 60 }, weather: 'tsa', terrain: 'city', tier: 'intro', signature: '市區進場', home: true },
-  tpe: { id: 'tpe', name: '桃園', icao: 'RCTP', lat: 25.0777, lng: 121.2328, runway: { headingDeg: 52, lengthM: 3660, widthM: 60 }, weather: 'tpe', terrain: 'coast', tier: 'intro', signature: '大型國際場・好飛' },
-  rmq: { id: 'rmq', name: '台中清泉崗', icao: 'RCMQ', lat: 24.2647, lng: 120.6213, runway: { headingDeg: 180, lengthM: 3660, widthM: 60 }, weather: 'rmq', terrain: 'coast', tier: 'inter', signature: '長跑道' },
-  khh: { id: 'khh', name: '高雄小港', icao: 'RCKH', lat: 22.5771, lng: 120.3500, runway: { headingDeg: 90, lengthM: 3150, widthM: 60 }, weather: 'khh', terrain: 'coast', tier: 'inter', signature: '海邊市區' },
-  hun: { id: 'hun', name: '花蓮', icao: 'RCYU', lat: 24.0231, lng: 121.6181, runway: { headingDeg: 30, lengthM: 2700, widthM: 45 }, weather: 'hun', terrain: 'mountain', tier: 'inter', signature: '山海之間・亂流', turbScale: 1.6 },
-  ttt: { id: 'ttt', name: '台東', icao: 'RCFN', lat: 22.7550, lng: 121.1017, runway: { headingDeg: 40, lengthM: 1600, widthM: 40 }, weather: 'ttt', terrain: 'mountain', tier: 'inter', signature: '側風・山區進場', windScale: 1.4, turbScale: 1.3 },
-  mzg: { id: 'mzg', name: '澎湖馬公', icao: 'RCQC', lat: 23.5687, lng: 119.6283, runway: { headingDeg: 20, lengthM: 3000, widthM: 45 }, weather: 'mzg', terrain: 'island', tier: 'expert', signature: '強側風', windScale: 1.9 },
-  knh: { id: 'knh', name: '金門', icao: 'RCBS', lat: 24.4279, lng: 118.3592, runway: { headingDeg: 60, lengthM: 2400, widthM: 45 }, weather: 'knh', terrain: 'island', tier: 'expert', signature: '易起霧・常關場' },
-  lzn: { id: 'lzn', name: '馬祖南竿', icao: 'RCFG', lat: 26.1598, lng: 119.9580, runway: { headingDeg: 30, lengthM: 1600, widthM: 30 }, weather: 'lzn', terrain: 'island', tier: 'expert', signature: '短跑道・霧・地形（最難）', windScale: 1.3, turbScale: 1.2 },
+  tsa: { id: 'tsa', name: '台北松山', icao: 'RCSS', accent: '#e8c96a', lat: 25.0694, lng: 121.5521, runway: { headingDeg: 100, lengthM: 2605, widthM: 60 }, weather: 'tsa', terrain: 'city', tier: 'intro', signature: '市區進場', home: true },
+  tpe: { id: 'tpe', name: '桃園', icao: 'RCTP', accent: '#7f9fd0', lat: 25.0777, lng: 121.2328, runway: { headingDeg: 52, lengthM: 3660, widthM: 60 }, weather: 'tpe', terrain: 'coast', tier: 'intro', signature: '大型國際場・好飛' },
+  rmq: { id: 'rmq', name: '台中清泉崗', icao: 'RCMQ', accent: '#b08a58', lat: 24.2647, lng: 120.6213, runway: { headingDeg: 180, lengthM: 3660, widthM: 60 }, weather: 'rmq', terrain: 'coast', tier: 'inter', signature: '長跑道' },
+  khh: { id: 'khh', name: '高雄小港', icao: 'RCKH', accent: '#6f8aa8', lat: 22.5771, lng: 120.3500, runway: { headingDeg: 90, lengthM: 3150, widthM: 60 }, weather: 'khh', terrain: 'coast', tier: 'inter', signature: '海邊市區' },
+  hun: { id: 'hun', name: '花蓮', icao: 'RCYU', accent: '#5a8a52', lat: 24.0231, lng: 121.6181, runway: { headingDeg: 30, lengthM: 2700, widthM: 45 }, weather: 'hun', terrain: 'mountain', tier: 'inter', signature: '山海之間・亂流', turbScale: 1.6 },
+  ttt: { id: 'ttt', name: '台東', icao: 'RCFN', accent: '#e08a3c', lat: 22.7550, lng: 121.1017, runway: { headingDeg: 40, lengthM: 1600, widthM: 40 }, weather: 'ttt', terrain: 'mountain', tier: 'inter', signature: '側風・山區進場', windScale: 1.4, turbScale: 1.3 },
+  mzg: { id: 'mzg', name: '澎湖馬公', icao: 'RCQC', accent: '#d0b878', lat: 23.5687, lng: 119.6283, runway: { headingDeg: 20, lengthM: 3000, widthM: 45 }, weather: 'mzg', terrain: 'island', tier: 'expert', signature: '強側風', windScale: 1.9 },
+  knh: { id: 'knh', name: '金門', icao: 'RCBS', accent: '#b0503a', lat: 24.4279, lng: 118.3592, runway: { headingDeg: 60, lengthM: 2400, widthM: 45 }, weather: 'knh', terrain: 'island', tier: 'expert', signature: '易起霧・常關場' },
+  lzn: { id: 'lzn', name: '馬祖南竿', icao: 'RCFG', accent: '#a8b4bc', lat: 26.1598, lng: 119.9580, runway: { headingDeg: 30, lengthM: 1600, widthM: 30 }, weather: 'lzn', terrain: 'island', tier: 'expert', signature: '短跑道・霧・地形（最難）', windScale: 1.3, turbScale: 1.2 },
 };
 
 /** 九機場 id（順序＝難度梯度／解鎖順序）。 */
@@ -54,6 +55,12 @@ export const DEMO_AIRPORTS = /** @type {const} */ (['tsa', 'khh', 'knh']);
 
 /** @param {string} id @returns {AirportSpec} 未知 → 退回母場（不爆）。 */
 export function airport(id) { return AIRPORTS[id] ?? AIRPORTS[HOME_AIRPORT]; }
+
+/** P1-4 機場抬頭名牌文案（中文名 + ICAO 兩行）。 @param {string} id @returns {string} */
+export function airportNameplate(id) {
+  const a = airport(id);
+  return `${a.name}\n${a.icao}`;
+}
 
 /** @typedef {{ text:string, draft:boolean }} Copy */
 /** 文案包裝（draft:true＝待 Sung 校稿，教訓 B5）。 @param {string} text @param {boolean} [draft] @returns {Copy} */

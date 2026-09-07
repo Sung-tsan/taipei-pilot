@@ -34,7 +34,12 @@ export class ChaseCam {
     const snapped = !this._init || Math.abs(angDiff(this._heading, s.heading)) > HEADING_SNAP;
     this._heading = s.heading;
 
-    const back = BACK * scale * (mul.back ?? 1), up = UP * scale * (mul.up ?? 1), ahead = AHEAD * scale;
+    const back = BACK * scale * (mul.back ?? 1), up = UP * scale * (mul.up ?? 1);
+    // P1-3：下降時略拉遠視注點，跑道／下滑更易讀（不改 XZ 幾何正後方鎖）。
+    const descentBoost = s.mode === 'flying' && s.pitch < -0.04
+      ? Math.min(0.35, (-s.pitch - 0.04) * 2.2)
+      : 0;
+    const ahead = AHEAD * scale * (1 + descentBoost);
     const dx = Math.sin(s.heading), dz = -Math.cos(s.heading);
     const targetPos = new THREE.Vector3(
       s.pos.x - dx * back,

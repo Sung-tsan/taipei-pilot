@@ -129,14 +129,79 @@
 
 | ID | 項目 | 要點 | 主要觸點 |
 |----|------|------|----------|
-| P1-1 | 地面流程壓縮 | 保留後推／滑行儀式；砍無謂 hold／過長 boarding；指令與綠線清楚可見 | `ground-nav`／departure 流程、`BOARD_SEC`／`PUSH_SEC`／`SEQ_SEC` |
-| P1-2 | 巡航去過場化 | 航路／下一航點**世界內可見**；8–12 分局內至少 1–2 互動（非純 `#cruiseOverlay` 快轉） | `route-engine.js`、走廊／航點標記 |
-| P1-3 | 進場落地定稿 | 對正、下滑、落地回饋；這段最決定 90 | flight-model 民航參數、chase-cam、HUD |
-| P1-4 | 機場／機種身份 | 九機場辨識；雙人時民航識別色或大名牌 | airport life／GLB accent |
-| P1-5 | 落地 CTA | 同一航線再飛／換對場／看成績 | 結算 UI（`lastFlight` 等既有鉤子） |
-| P1-6 | 真實模式開關 | 完整 ATC／長等待放進「真實／大人」；預設＝精煉短航班 | settings + departure 分支 |
+| P1-1 | 地面流程壓縮 | **已實作 2026-09-07**：`DEPART_TIMING.shortHaul` 預設；腳本死氣 13s→~7.7s（立刻確認）、21s→~11.7s（auto）；綠線／ModeSlot 保留；`realistic` 表備好等 P1-6 | `ground-flow.js` 節奏表、`main.js` 離場狀態機 |
+| P1-2 | 巡航去過場化 | **已實作 2026-09-07**：世界航點環＋路徑小環；巡航內 2 閘門穿圈＋1 天氣拍；overlay 顯示下一航點 | `route-engine.js` beats、`cruise-markers.js`、`main.js` |
+| P1-3 | 進場落地定稿 | **已實作 2026-09-07**：對正／下滑 HUD＋五邊短走廊＋落地品質 toast／成績；chase-cam 下降略拉遠視注 | `approach-guide.js`、`main.js`、`chase-cam.js`、HUD |
+| P1-4 | 機場／機種身份 | **已實作 2026-09-07**：九場 accent＋抬頭名牌；GLB slot 識別色／大名牌 | airport-life／labels／plane-entity／airports |
+| P1-5 | 落地 CTA | **已實作 2026-09-07**：`flight-cta.js` + `#flightCta` modal；落地後 ≤15s 三選一（再飛／對場／成績）；hook `lastFlight` | `ui/flight-cta.js`、`index.html`、`main.js` 落地結算 |
+| P1-6 | 真實模式開關 | **已實作 2026-09-07**：設定「真實模式」預設關；開→`DEPART_TIMING.realistic`＋略長巡航；持久化 `tp_realistic_mode` | settings-store + `#realisticRow` + `main.js` applyDepartPace |
 
 ---
+
+
+### P1-1 實作紀要（2026-09-07）
+
+| 常數 | 舊值 | shortHaul（預設） | realistic（P1-6） |
+|------|------|-------------------|-------------------|
+| `boardSec` | 4 | 2.5 | 8 |
+| `confirmAutoSec` | 8（hardcode `BOARD+8`） | 4 | 12 |
+| `pushSec` | 3.2 | 2.4 | 5 |
+| `pushDoneSec` | 0.8 | 0.55 | 1.2 |
+| `seqSec` | 5 | 2.2 | 8 |
+| `turnaroundMs` | 4500 | 2500 | 8000 |
+
+- 綠線 taxi、跟我車、ModeSlot／ATC 引導**未移除**；ModeSlot hold 文案改「前機離場中…即將起飛」。
+- 天氣／後果軸**不**擋離場節奏（原本就沒 gate）；T-34C／非民航路徑不動。
+- HITL：松山選 A330／B737／ATR → KeyG spawn-at-gate → 計時 boarding→確認後推→跟綠線到 hold→cleared；目標地面段 1.5–2 min。
+
+
+### P1-2 實作紀要（2026-09-07）
+
+- **世界可見**：進雲時沿航向放 2 座 torus 閘門＋路徑中點小環（語彙同 race/corridor markers），不只 `#cruiseOverlay`。
+- **互動（壓縮巡航 22–48s 內）**：`gate1`（~30%）穿圈 → 航線小知識 toast；`wx1`（~50%）雲層亂流拍；`gate2`（~72%）第二穿圈。逾時未穿＝擦過提示，不擋抵達。
+- **半自動保留**：progress 仍時間推進；轉向權重 0.25→0.42 方便穿之字閘門。shortHaul 預設不變、不強制 ATC 等待。
+- **驗收 HITL（松山→高雄）**：選 A330／航線 RCSS→RCKH → 起飛爬升進雲 → 應見前方青色航點環；穿／擦各至少驗證一次；天氣拍 toast；抵達進場 toast 含航點成績。
+- **測試**：`tests/route-engine.test.js` P1-2 describe（beats／place／step／label）。
+
+
+### P1-3 實作紀要（2026-09-07）
+
+- **對正**：五邊進場 `ModeSlot`＝對正／偏左偏右；`HomeSlot` 箭頭＝航向誤差；世界可見 `finalApproachPoints` 穿越環（對正→下滑→跑道頭）。
+- **下滑**：`approachSpawnPose` 改為 ~3.5° 可讀高度＋民航進場速度（不再 360m/70m/s 過陡過快）；`AltBand` 顯示目標高度與偏高／偏低。
+- **落地回饋**：`judgeRunwayLanding`（下沉＋中線）→ soft/ok/firm 與 ⭐；toast 接 `lastFlight` 載客／航點；P1-5 CTA 成績列可顯落地品質。
+- **相機**：下降時 chase-cam 略拉遠視注（XZ 正後方幾何鎖不變，不回退 P0-1）。
+- **並行**：純邏輯在 `approach-guide.js`；不改 P1-1／P1-2／P1-5 契約（只加強 toast／成績欄位）。
+- **HITL（最終 2–2.5 min）**：松山→高雄抵達後應見橘／金穿越環＋ModeSlot「對正／下滑」；對正中線輕觸地 →「漂亮落地」＋CTA 含 ⭐；偏離／重觸 → 較弱文案仍可過。
+- **測試**：`tests/approach-guide.test.js`；`air-corridor` ATC 機場名；`hud-slots` free TaskSlot。
+
+
+### P1-5 實作紀要（2026-09-07）
+
+- **觸發**：巡航抵達寫入 `lastFlight`（routeId/from/to/pax/gateScore/punctual）→ `justLanded` 且民航 → `#flightCta` candy modal（同 modeMenu 風格）。
+- **三選一**：①同一航線再飛（回出發場＋選同 dest＋spawn-at-gate）②換對場（RCKH↔RCSS 等同 route 反向）③看這班成績（準點／載客／航點／指派門）；15s 自動收合＝繼續到場滑行。
+- **並行**：邏輯在 `src/display/ui/flight-cta.js`；`main.js` 只碰落地結算＋CTA 接線＋過站 hold（CTA 開著不 auto-turnaround）。
+- **HITL**：A330／航線松山→高雄 → `arriveNow` 或真飛落地 → 應見 CTA；測再飛／對場／成績／關閉。
+- **測試**：`tests/flight-cta.test.js`。
+
+
+### P1-6 實作紀要（2026-09-07）
+
+- **UI**：⚙️ 設定 modal 新增「🛫 真實模式」開關列（關＝短航班 8–12 分／開＝較長登機與排序）；candy `.set-opt` 同既有設定風格。
+- **持久化**：`settings-store` 欄位 `realisticMode`（預設 `false`）；localStorage key `tp_realistic_mode`＝`'1'|'0'`。
+- **地面**：`applyDepartPace` 依開關選 `DEPART_TIMING.shortHaul|realistic`（P1-1 表）；綠線／ModeSlot／ATC 文案不拆，只換 timer。
+- **巡航輕閘**：`cruiseDuration`／`makeCruise` 可選 `pace`；realistic 夾值 40–90s（預設仍 22–48s）。不重建 ATC。
+- **HITL**：設定→開真實模式→民航 spawn-at-gate → boarding 約 8s（短航班約 2.5s）；或 `__tp.setRealisticMode(true)` 後看 `__tp.departTiming.boardSec`。
+- **測試**：`settings-store.test.js`（預設＋pace）、`ground-flow` `departPaceFromRealistic`、`route-engine` realistic 夾值。
+
+
+### P1-4 實作紀要（2026-09-07）
+
+- **機場**：`airports.accent` 九場一色；`airportNameplate`＝中文名＋ICAO；`airport-scene` 航廈／招牌地標掛抬頭；`labels` 兩行＋世界座標淡入（修 template yaw）。
+- **生活感**：`airport-life` 夜燈／風向袋／航廈前色帶吃 accent（variant→機場 id）。
+- **民航／雙人**：`plane-entity` GLB 材質 lean slot 色（clone）＋垂尾色條；slot 大名牌（紅機／藍機）。voxel 機原本就吃 accent。
+- **未碰**：`main.js`／settings（讓 P1-6）；完整航司塗裝資產工程（仍 POLISH）。
+- **測試**：`plane-entity-identity`／`labels-identity`／airports＋airport-life accent cases。
+- **HITL**：雙視口同機種分紅藍；松山→高雄進場見「高雄小港／RCKH」抬頭與港灰藍夜燈。
 
 ## 4. P2 — 明確降優先（本兩週不排）
 
@@ -175,8 +240,13 @@
 - [ ] 轉彎中／後：無持續斜後方鎖死  
 - [ ] 民航機無法進入可射擊空戰；remote 無 🔥  
 - [ ] 新／升級 GLB 授權寫入 `CREDITS.md`  
-- [ ] 松山→高雄（或選定旗艦）牆鐘 **8–12 分鐘** 可完成一班  
-- [ ] 落地後有明確再飛 CTA  
+- [ ] 松山→高雄（或選定旗艦）牆鐘 **8–12 分鐘** 可完成一班
+- [x] P1-1 地面腳本死氣壓縮（shortHaul 表 + unit）；HITL 牆鐘地面 1.5–2 min 仍待 Sung 簽
+- [x] P1-2 巡航世界航點＋1–2 互動（beats unit）；HITL 松山→高雄穿圈／天氣拍仍待 Sung 簽  
+- [x] 落地後有明確再飛 CTA（P1-5 unit；HITL 松山→高雄落地選三選一仍待 Sung 簽）  
+- [x] P1-3 進場對正／下滑／落地回饋（approach-guide unit）；HITL 最終 2–2.5 min 仍待 Sung 簽
+- [x] P1-4 機場／機種身份（accent／名牌／GLB slot unit）；HITL 雙人紅藍＋九場抬頭仍待 Sung 簽  
+- [x] P1-6 真實模式開關（settings 預設關＋pace unit；HITL 開後較長登機仍待 Sung 簽）
 - [ ] 既有 vitest／playwright 全綠（允許新增專測）
 
 ---

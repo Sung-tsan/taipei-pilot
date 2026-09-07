@@ -49,10 +49,15 @@ Append 格式（一行）：
 - [ ] 移動車流 / 遠方環境機 — v3.0-3 — bonus 未做（perf 預算，不擋版本）
 - [ ] smoking 狀態降性能 — v1.1-1 — 暫僅視覺+警告、不降性能
 - [ ] 手動 pushback（真實模式 stretch）— v4.1-1 — 暫全自動引導
+- [x] P1-1 民航地面節奏 shortHaul 表（boarding/push/seq/turnaround 壓縮；realistic 表備 P1-6）— 2026-09-07 civil90 — 綠線儀式保留
+- [x] P1-6 真實模式開關（settings 預設關；`tp_realistic_mode`；開→realistic 地面＋略長巡航）— 2026-09-07 civil90
+- [x] P1-2 巡航世界航點＋穿圈／天氣節拍（route-engine beats + cruise-markers）— 2026-09-07 civil90 — overlay 仍保留進度
+- [x] P1-3 進場對正／下滑／落地回饋（approach-guide + final corridor + HUD + landing toast）— 2026-09-07 civil90 — 與 P1-5 CTA 成績欄位銜接
+- [x] P1-5 落地 CTA（再飛／換對場／看成績；`flight-cta.js` + lastFlight）— 2026-09-07 civil90 — remote 未做專用 CTA（display 足夠）
 - [ ] 空對地紅區進 airspace.json schema — v2.0-4 — 暫 demo hardcoded
 - [ ] 敵機編隊維持相位 — V3 五修 — 暫用 spawn 編隊+既有追擊散開達成
-- [ ] GLB 民航機 per-slot 識別色（紅/藍機）— v4.0-1 — GLB 用 livery 貼圖、暫無 accent，雙人同機外觀相同
-- [ ] 巡航＝半自動快轉（不渲染跨海 300km）— v5.0-1 — 北極星拍板；真 3D 跨海巡航另議
+- [x] GLB 民航機 per-slot 識別色（紅/藍機）— P1-4 2026-09-07 — 材質 lean＋垂尾色條＋大名牌（完整 livery 貼圖仍後續）
+- [x] 巡航去過場化（世界航點環＋2 閘門／1 天氣拍；仍時間壓縮不渲染 300km）— P1-2 2026-09-07 civil90 — 真 3D 跨海巡航另議
 - [ ] 機場招牌地標＝手刻 voxel 小件（識別用、非精細地標）— v5.0-1
 - [ ] AirportLife 停機坪生活感仍在世界原點共用（各機場顯松山風擺件，原點即跑道中心尚可）— v5.0-1 — per-airport 化較大工
 - [ ] 航線收集在「飛抵 airspace」點亮（非落地）— v5.0-2 — robust + 可測；如要嚴格「落地才算」再改

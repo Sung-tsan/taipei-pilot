@@ -5,8 +5,9 @@ import * as THREE from 'three';
 import { buildVoxelGeometry, voxelMaterial } from '../../voxel/build.js';
 import { planeSpec, DEFAULT_PLANE, isGlbModel } from './plane-specs.js';
 import { loadToyModel } from '../assets/glb-model.js';
-import { SLOT_COLORS } from '../../../shared/constants.js';
+import { SLOT_COLORS, SLOT_NAMES } from '../../../shared/constants.js';
 import { expDamp } from '../../lib/math.js';
+import { makeTextSprite } from '../render/labels.js';
 
 const GEAR_TOP = 0.62; // 起落架收進機腹的鉸點高度
 
@@ -58,6 +59,13 @@ export class PlaneEntity {
     this.smoke.visible = false;
     this._smoking = false;
     this.group.add(this.smoke);
+
+    // P1-4：雙人／民航識別——slot 大名牌（紅機／藍機）+ GLB 識別色條（voxel 機本身已吃 accent）
+    /** @type {THREE.Sprite|null} */
+    this.nameplate = null;
+    /** @type {THREE.Mesh|null} GLB 垂尾／翼尖 accent 色條 */
+    this._glbAccentMark = null;
+    this._ensureNameplate();
 
     this.group.visible = false;
     scene.add(this.group);
@@ -123,6 +131,11 @@ export class PlaneEntity {
   _clearGlb() {
     if (this._glbRoot) { this.group.remove(this._glbRoot); this._glbRoot = null; }
     this._glbGearNodes = [];
+    if (this._glbAccentMark) {
+      this.group.remove(this._glbAccentMark);
+      this._glbAccentMark.geometry.dispose();
+      this._glbAccentMark = null;
+    }
   }
 
   /**
@@ -166,6 +179,8 @@ export class PlaneEntity {
       }
       this.group.add(inst);
       this._glbRoot = inst;
+      this._applyGlbAccent(inst);          // 材質 lean 向 slot 色（clone，不污染模板）
+      this._buildGlbAccentMark(L);         // 垂尾色條＝遠距可辨
     }).catch(() => { /* 載入失敗：保持無機體，不爆 */ });
   }
 
@@ -197,6 +212,62 @@ export class PlaneEntity {
     this.group.add(gear);
     this._planeMeshes.push(gear); // 換機/dispose 隨 voxel 網格一起清
     return gear;
+  }
+
+  /**
+   * P1-4：GLB 材質 lean 向 slot accent（每 mesh clone material，不改 shared 模板）。
+   * 整機約 32% 混色——雙人同機種仍可一眼分紅／藍，又不毀玩具暖色票。
+   * @param {THREE.Object3D} root
+   */
+  _applyGlbAccent(root) {
+    const accent = new THREE.Color(this.accent);
+    root.traverse((o) => {
+      const mesh = /** @type {THREE.Mesh} */ (o);
+      if (!(/** @type {any} */ (mesh).isMesh) || !mesh.material) return;
+      const srcList = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const out = srcList.map((m) => {
+        const c = m.clone();
+        if (/** @type {any} */ (c).color) {
+          /** @type {THREE.Color} */ (/** @type {any} */ (c).color).lerp(accent, 0.32);
+        }
+        return c;
+      });
+      mesh.material = Array.isArray(mesh.material) ? out : out[0];
+    });
+  }
+
+  /**
+   * P1-4：GLB 垂尾識別色條（voxel 小件；遠距比材質 lean 更醒目）。
+   * @param {number} L 機身長（m）
+   */
+  _buildGlbAccentMark(L) {
+    if (this._glbAccentMark) {
+      this.group.remove(this._glbAccentMark);
+      this._glbAccentMark.geometry.dispose();
+      this._glbAccentMark = null;
+    }
+    const h = Math.max(2.2, L * 0.09);
+    const geo = buildVoxelGeometry({
+      scale: 1,
+      palette: { A: this.accent },
+      boxes: [[-0.35, 0, -0.6, 0.7, h, 1.2, 'A']],
+    });
+    const mark = new THREE.Mesh(geo, voxelMaterial());
+    // 機尾上方（遊戲前進＝-Z；垂尾約在 +Z 後段）
+    mark.position.set(0, Math.max(3.5, L * 0.12), L * 0.28);
+    this.group.add(mark);
+    this._glbAccentMark = mark;
+  }
+
+  /** P1-4：slot 大名牌（紅機／藍機）；掛 group 上方，隨可見性開關。 */
+  _ensureNameplate() {
+    if (this.nameplate) return;
+    const label = SLOT_NAMES[this.slot] ?? `P${this.slot + 1}`;
+    const sprite = makeTextSprite(label, { kind: 'plane', fill: this.accent });
+    sprite.position.set(0, 14, 0);
+    sprite.visible = false;
+    this.group.add(sprite);
+    this.nameplate = sprite;
   }
 
   /** 受損冒煙開關（真實模式） @param {boolean} smoking */
@@ -242,12 +313,21 @@ export class PlaneEntity {
     const k = Math.max(0.25, 1 - agl / 400);
     this.shadow.scale.setScalar(k * this._shadowScale); // 大機（GLB）影子放大
     /** @type {THREE.MeshBasicMaterial} */ (this.shadow.material).opacity = 0.28 * k;
+
+    // P1-4：大名牌高度隨機身尺度；近距略大、遠距仍可讀（billboard）
+    if (this.nameplate) {
+      const y = 10 + 6 * this._shadowScale;
+      this.nameplate.position.y = y;
+      const sk = 0.85 + 0.25 * this._shadowScale;
+      this.nameplate.scale.set(280 * sk, 70 * sk, 1);
+    }
   }
 
   /** @param {boolean} v */
   setVisible(v) {
     this.group.visible = v;
     this.shadow.visible = v;
+    if (this.nameplate) this.nameplate.visible = v;
   }
 
   /** 從場景移除並釋放幾何（敵機換波/清場用）。 */

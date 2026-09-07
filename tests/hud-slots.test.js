@@ -3,13 +3,13 @@ import { describe, it, expect } from 'vitest';
 import { SLOT_NAMES, slotVisibility, HUD_MODES } from '../src/display/ui/hud-slots.js';
 
 describe('slotVisibility（HUD 6 槽位 contextual 契約）', () => {
-  it('free 模式：機種/高度/回家/狀態 eligible；任務卡與中央導引隱藏', () => {
+  it('free 模式：機種/高度/回家/狀態/進場任務卡 eligible；中央導引隱藏', () => {
     const v = slotVisibility('free');
     expect(v.ModeSlot).toBe(true);
     expect(v.AltBand).toBe(true);
     expect(v.HomeSlot).toBe(true);
     expect(v.StatusSlot).toBe(true);  // 為 v1.1-1 ❤️ 預留（本輪無內容→實際隱藏）
-    expect(v.TaskSlot).toBe(false);   // v1.1-4 切 mission 才亮
+    expect(v.TaskSlot).toBe(true);    // P1-3：民航進場對正卡（無內容仍隱藏）
     expect(v.CenterSlot).toBe(false); // toast 走瞬時 overlay，不靠此契約
   });
 

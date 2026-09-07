@@ -12,7 +12,7 @@ import { makeTaxiwayGraph } from './taxiway.js';
 import { makeTaipei } from './taipei.js';
 import { makeAirport, RUNWAY_DIR, spawnPose as tsaSpawnPose } from './airport.js';
 import { TERRAIN } from '../flight/forced-landing.js';
-import { airport } from './airports.js';
+import { airport, airportNameplate } from './airports.js';
 
 /** @typedef {import('./airports.js').AirportSpec} AirportSpec */
 /**
@@ -64,8 +64,15 @@ export function makeAirportScene(id) {
 /** 松山：包既有 makeTaipei()，補上 V5 切換所需欄位（runwayDir/taxi/spawnPose）。 @param {AirportSpec} spec @returns {AirportScene} */
 function wrapTaipei(spec) {
   const t = makeTaipei();
+  // P1-4：松山也掛機場抬頭名牌（中文＋ICAO），與 template 場一致可辨。
+  const aptLm = {
+    id: 'tsa_apt', name: airportNameplate(spec.id), x: 0, z: -280, topY: 48, clear: 220,
+    kind: 'airport',
+    aabb: { minX: -40, maxX: 40, minZ: -320, maxZ: -240, h: 48 },
+  };
   return {
-    group: t.group, env: t.env, terrainAt: t.terrainAt, solidAt: t.solidAt, landmarks: t.landmarks,
+    group: t.group, env: t.env, terrainAt: t.terrainAt, solidAt: t.solidAt,
+    landmarks: [aptLm, ...t.landmarks],
     runwayDir: RUNWAY_DIR, runwayLength: 2605, taxi: makeTaxiwayGraph(2605),
     spawnPose: tsaSpawnPose, spec,
     dispose: () => disposeGroup(t.group),
@@ -146,6 +153,17 @@ function makeTemplateScene(spec) {
   termMesh.position.set(0, 0, -(W / 2 + 320));
   group.add(termMesh);
   const termFoot = { cx: 0, cz: -(W / 2 + 320), hw: termW / 2 + 30, hd: 60, h: termH + 3 };
+  // P1-4：航廈上方掛機場抬頭（中文名＋ICAO）；本地座標，labels 用世界距離淡入。
+  const aptLandmark = {
+    id: `${spec.id}_apt`,
+    name: airportNameplate(spec.id),
+    x: 0,
+    z: -(W / 2 + 320),
+    topY: termH + 8,
+    clear: 240,
+    kind: 'airport',
+    aabb: { minX: -termW / 2, maxX: termW / 2, minZ: -(W / 2 + 360), maxZ: -(W / 2 + 280), h: termH + 8 },
+  };
 
   // —— 招牌地標（手刻 voxel；一場一座，給機場識別；§11 例外＝地標續用 voxel）——
   const lm = buildSignature(group, spec, W);
@@ -187,7 +205,7 @@ function makeTemplateScene(spec) {
 
   return {
     group, env, terrainAt, solidAt,
-    landmarks: lm ? [lm.info] : [],
+    landmarks: lm ? [aptLandmark, lm.info] : [aptLandmark],
     runwayDir, runwayLength: L, taxi,
     spawnPose: (slot) => templateSpawnPose(slot, runwayDir, L),
     spec,
@@ -267,7 +285,12 @@ function buildSignature(group, spec, W) {
   const bb = /** @type {THREE.Box3} */ (geo.boundingBox);
   return {
     along, lateral, r: Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 + 10, h: bb.max.y,
-    info: { id: `${spec.id}_sig`, name: d.name, x: 0, z: 0, topY: bb.max.y, clear: 200, aabb: { minX: 0, maxX: 0, minZ: 0, maxZ: 0, h: bb.max.y } },
+    // P1-4：名牌掛在地標本地座標（along/lateral），不再錯置於跑道原點
+    info: {
+      id: `${spec.id}_sig`, name: d.name, x: along, z: lateral, topY: bb.max.y, clear: 200,
+      kind: 'landmark',
+      aabb: { minX: along - 40, maxX: along + 40, minZ: lateral - 40, maxZ: lateral + 40, h: bb.max.y },
+    },
   };
 }
 

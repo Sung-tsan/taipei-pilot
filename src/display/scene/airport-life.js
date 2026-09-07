@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildVoxelGeometry, voxelMaterial } from '../../voxel/build.js';
 import { t34cBody } from '../../voxel/models/t34c.js';
 import { f16Body } from '../../voxel/models/f16.js';
+import { AIRPORT_IDS, airport } from './airports.js';
 
 /** 簡易客機 voxel（停機坪變化用；比 T-34C 大、有垂尾，剪影明顯不同）。export 供排隊環境機（v5.2）複用。 */
 export const airlinerBody = {
@@ -38,6 +39,9 @@ export class AirportLife {
     this._half = runwayLength / 2;
     this._variant = variant;
     this._fleetCount = Math.max(1, Math.min(6, fleetCount));
+    // P1-4：依 variant→機場 id 取識別色（夜燈／風向袋／窗帶），九場一眼可辨
+    const aptId = AIRPORT_IDS[variant] ?? AIRPORT_IDS[0];
+    this._accent = airport(aptId).accent;
     scene.add(this.group);
     this._buildStatic();
     this._buildNightLights();
@@ -75,6 +79,17 @@ export class AirportLife {
     pole.translate(Math.min(1180, this._half * 0.9), 0, -110);
     geos.push(pole);
 
+    // P1-4：航廈前識別色帶（停機坪側牆／招牌色塊），不另加 draw（併入 static merge）
+    const band = buildVoxelGeometry({
+      scale: 1,
+      palette: { A: this._accent, W: '#f4f1e8' },
+      boxes: [
+        [-90, 2, -338, 180, 10, 4, 'A'],
+        [-40, 12, -338, 80, 6, 4, 'W'],
+      ],
+    });
+    geos.push(band);
+
     this._static = new THREE.Mesh(mergeGeometries(geos), voxelMaterial());
     geos.forEach((g) => g.dispose());
     this.group.add(this._static);
@@ -90,14 +105,16 @@ export class AirportLife {
     for (let z = -40; z >= -170; z -= 18) { const g = new THREE.BoxGeometry(1.6, 1, 1.6); g.translate(0, 0.6, z); geos.push(g); }
     for (let x = -150; x <= 150; x += 12) { const g = new THREE.BoxGeometry(7, 5, 1.5); g.translate(x, 8, -332); geos.push(g); }
     for (const x of [-180, -60, 60, 180]) { const g = new THREE.BoxGeometry(3, 3, 3); g.translate(x, 14, -180); geos.push(g); }
-    this.nightLights = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshBasicMaterial({ color: '#ffe6a0', fog: false }));
+    // P1-4：夜燈帶機場 accent（暖金混識別色），進場時各場光色不同
+    const nightCol = new THREE.Color('#ffe6a0').lerp(new THREE.Color(this._accent), 0.45);
+    this.nightLights = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshBasicMaterial({ color: nightCol, fog: false }));
     geos.forEach((g) => g.dispose());
     this.group.add(this.nightLights);
   }
 
   /** 動態件：風向袋（隨風擺）+ 旋轉雷達（轉），各 1 mesh */
   _buildAnimated() {
-    this.windsock = new THREE.Mesh(buildVoxelGeometry({ scale: 1, palette: { O: '#e8852f', W: '#f4f1e8' }, boxes: [
+    this.windsock = new THREE.Mesh(buildVoxelGeometry({ scale: 1, palette: { O: this._accent, W: '#f4f1e8' }, boxes: [
       [-0.2, -0.5, 0, 0.4, 1.0, 5.0, 'O'], [-0.25, -0.6, 1.6, 0.5, 1.2, 1.2, 'W'],
     ] }), voxelMaterial());
     this.windsock.position.set(Math.min(1180, this._half * 0.9), 9.5, -110);

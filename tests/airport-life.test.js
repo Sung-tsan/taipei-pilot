@@ -41,3 +41,16 @@ describe('AirportLife 機場生活感', () => {
     expect(() => new AirportLife(new THREE.Scene(), { fleetCount: 99 })).not.toThrow();
   });
 });
+
+describe("P1-4 AirportLife accent", () => {
+  it("different variant => different accent and night light color", () => {
+    const a = /** @type {any} */ (new AirportLife(new THREE.Scene(), { variant: 0 }));
+    const b = /** @type {any} */ (new AirportLife(new THREE.Scene(), { variant: 3 }));
+    expect(a._accent).toBeTruthy();
+    expect(b._accent).toBeTruthy();
+    expect(a._accent).not.toBe(b._accent);
+    const ca = /** @type {import("three").MeshBasicMaterial} */ (a.nightLights.material).color;
+    const cb = /** @type {import("three").MeshBasicMaterial} */ (b.nightLights.material).color;
+    expect(ca.equals(cb)).toBe(false);
+  });
+});

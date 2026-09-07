@@ -4,6 +4,8 @@ import { describe, it, expect } from 'vitest';
 import {
   makeDepartState, makeArrivalState, makeCorridorState,
   resetDepart, resetArrival, resetCorridor, beginDepart,
+  DEPART_TIMING, DEFAULT_DEPART_PACE, departTiming, departPaceFromRealistic,
+  scriptedGroundSec, scriptedGroundSecWorst,
 } from '../src/display/scene/ground-flow.js';
 
 /** 模擬 main.js 的 per-slot 陣列（MAX_SLOTS=2）。 */
@@ -77,5 +79,63 @@ describe('ground-flow：reset 就地清除、不換物件身分', () => {
     resetArrival(as[1]);
     expect(as[0]).toEqual({ phase: 'taxi', exit: null, gate: 'g3', parkedAt: 0 });
     expect(as[1].phase).toBe('none');
+  });
+});
+
+describe('ground-flow：P1-1 地面節奏表 shortHaul vs realistic', () => {
+  it('預設 pace 是 shortHaul，且 unknown → shortHaul', () => {
+    expect(DEFAULT_DEPART_PACE).toBe('shortHaul');
+    expect(departTiming()).toEqual(DEPART_TIMING.shortHaul);
+    expect(departTiming('nope')).toEqual(DEPART_TIMING.shortHaul);
+    expect(departTiming('realistic')).toEqual(DEPART_TIMING.realistic);
+  });
+
+  it('shortHaul 明顯短於 realistic（可量測壓縮）', () => {
+    const s = DEPART_TIMING.shortHaul;
+    const r = DEPART_TIMING.realistic;
+    expect(s.boardSec).toBeLessThan(r.boardSec);
+    expect(s.confirmAutoSec).toBeLessThan(r.confirmAutoSec);
+    expect(s.pushSec).toBeLessThan(r.pushSec);
+    expect(s.pushDoneSec).toBeLessThan(r.pushDoneSec);
+    expect(s.seqSec).toBeLessThan(r.seqSec);
+    expect(s.turnaroundMs).toBeLessThan(r.turnaroundMs);
+    expect(scriptedGroundSec(s)).toBeLessThan(scriptedGroundSec(r));
+    expect(scriptedGroundSecWorst(s)).toBeLessThan(scriptedGroundSecWorst(r));
+  });
+
+  it('shortHaul 腳本死氣（立刻確認）落在 ~6–10s：留時間給綠線滑行儀式', () => {
+    const sec = scriptedGroundSec(DEPART_TIMING.shortHaul);
+    expect(sec).toBeGreaterThanOrEqual(6);
+    expect(sec).toBeLessThanOrEqual(10);
+    // 相對舊常數（board4+push3.2+done0.8+seq5＝13）：至少砍 3 秒
+    expect(sec).toBeLessThanOrEqual(13 - 3);
+  });
+
+  it('shortHaul 最壞（不按確認）仍明顯短於舊 21s（4+8+3.2+0.8+5）', () => {
+    const worst = scriptedGroundSecWorst(DEPART_TIMING.shortHaul);
+    expect(worst).toBeLessThan(16);
+    expect(worst).toBeGreaterThan(scriptedGroundSec(DEPART_TIMING.shortHaul));
+  });
+
+  it('各階段秒數皆為正（狀態機不會卡死／跳過儀式）', () => {
+    for (const pace of /** @type {const} */ (['shortHaul', 'realistic'])) {
+      const t = DEPART_TIMING[pace];
+      expect(t.boardSec).toBeGreaterThan(0);
+      expect(t.confirmAutoSec).toBeGreaterThan(0);
+      expect(t.pushSec).toBeGreaterThan(0);
+      expect(t.pushDoneSec).toBeGreaterThan(0);
+      expect(t.seqSec).toBeGreaterThan(0);
+      expect(t.turnaroundMs).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('ground-flow：P1-6 departPaceFromRealistic', () => {
+  it('關／缺省 → shortHaul；開 → realistic', () => {
+    expect(departPaceFromRealistic(false)).toBe('shortHaul');
+    expect(departPaceFromRealistic()).toBe('shortHaul');
+    expect(departPaceFromRealistic(true)).toBe('realistic');
+    expect(departTiming(departPaceFromRealistic(true))).toEqual(DEPART_TIMING.realistic);
+    expect(departTiming(departPaceFromRealistic(false))).toEqual(DEPART_TIMING.shortHaul);
   });
 });

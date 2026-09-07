@@ -6,18 +6,27 @@ const MODE_KEY = 'tp_consequence_mode';
 const LIMIT_KEY = 'tp_mishap_limit';
 const SHAKE_KEY = 'tp_cam_shake';
 const WEATHER_KEY = 'tp_weather_pref';
+const REALISTIC_KEY = 'tp_realistic_mode'; // P1-6：真實模式（較長登機／排序）；預設關
 
 /** 天氣偏好選項：auto＝照後果模式 roll；其餘＝家長手動鎖定（可關掉雨/霧）。 */
 export const WEATHER_PREFS = /** @type {const} */ (['auto', 'clear', 'cloudy', 'rain', 'fog']);
 
-/** 預設：新玩家走安全；❤️ 上限 3（僅 gentle 用）；亂流鏡頭晃預設開（可關，減暈）；天氣自動 */
-export const DEFAULTS = { mode: /** @type {'safe'} */ ('safe'), heartsMax: 3, camShake: true, weather: /** @type {'auto'} */ ('auto') };
+/** 預設：新玩家走安全；❤️ 上限 3；亂流鏡頭晃開；天氣自動；真實模式關（短航班節奏） */
+export const DEFAULTS = {
+  mode: /** @type {'safe'} */ ('safe'),
+  heartsMax: 3,
+  camShake: true,
+  weather: /** @type {'auto'} */ ('auto'),
+  realisticMode: false,
+};
 
 /** @typedef {import('../flight/consequence.js').ConsequenceMode} ConsequenceMode */
 /** @typedef {typeof WEATHER_PREFS[number]} WeatherPref */
 /** @typedef {{ getItem:(k:string)=>string|null, setItem:(k:string,v:string)=>void }} StorageLike */
 
-/** @param {StorageLike} [storage] @returns {{ mode:ConsequenceMode, heartsMax:number, camShake:boolean, weather:WeatherPref }} */
+/** @typedef {{ mode:ConsequenceMode, heartsMax:number, camShake:boolean, weather:WeatherPref, realisticMode:boolean }} AppSettings */
+
+/** @param {StorageLike} [storage] @returns {AppSettings} */
 export function loadSettings(storage = localStorage) {
   const mode = storage.getItem(MODE_KEY);
   const validMode = mode === 'safe' || mode === 'gentle' || mode === 'real'
@@ -36,13 +45,29 @@ export function loadSettings(storage = localStorage) {
 
   const wRaw = storage.getItem(WEATHER_KEY);
   const weather = WEATHER_PREFS.includes(/** @type {WeatherPref} */ (wRaw)) ? /** @type {WeatherPref} */ (wRaw) : DEFAULTS.weather;
-  return { mode: validMode, heartsMax, camShake, weather };
+
+  // P1-6：真實模式預設關；只認 '1'/'0'，缺省／壞值 → false
+  const rRaw = storage.getItem(REALISTIC_KEY);
+  const realisticMode = rRaw === null ? DEFAULTS.realisticMode : rRaw === '1';
+
+  return { mode: validMode, heartsMax, camShake, weather, realisticMode };
 }
 
-/** @param {StorageLike} storage @param {{ mode:ConsequenceMode, heartsMax:number, camShake:boolean, weather:WeatherPref }} s */
-export function saveSettings(storage, { mode, heartsMax, camShake, weather }) {
+/** @param {StorageLike} storage @param {AppSettings} s */
+export function saveSettings(storage, { mode, heartsMax, camShake, weather, realisticMode }) {
   storage.setItem(MODE_KEY, mode);
   storage.setItem(LIMIT_KEY, heartsMax === Infinity ? 'inf' : String(heartsMax));
   storage.setItem(SHAKE_KEY, camShake ? '1' : '0');
   storage.setItem(WEATHER_KEY, weather ?? 'auto');
+  storage.setItem(REALISTIC_KEY, realisticMode ? '1' : '0');
+}
+
+/**
+ * settings.realisticMode → 地面／巡航節奏 pace（P1-6）。
+ * @param {{ realisticMode?: boolean }|boolean} sOrBool
+ * @returns {'shortHaul'|'realistic'}
+ */
+export function departPaceFromSettings(sOrBool) {
+  const on = typeof sOrBool === 'boolean' ? sOrBool : !!sOrBool?.realisticMode;
+  return on ? 'realistic' : 'shortHaul';
 }
